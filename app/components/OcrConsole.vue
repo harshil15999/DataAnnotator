@@ -165,6 +165,11 @@ const pdfEscaped = ref(false)
 const pdfLineShow = computed(() => pdfPointerActive.value && !pdfEscaped.value)
 const imgWrapRef = ref<HTMLElement | null>(null)
 const imgPointer = ref<{ xPct: number; yPct: number } | null>(null)
+const imgEscaped = ref(false)
+
+/* mirrored pointer: right-panel hover/edit position, reflected onto the left panel */
+const rightPointerPct = ref<{ xPct: number; yPct: number } | null>(null)
+const rightPointerLocked = ref(false)
 
 let timer: ReturnType<typeof setInterval> | null = null
 let rowFlashTimer: ReturnType<typeof setTimeout> | null = null
@@ -215,6 +220,7 @@ function handleFile(file: File) {
   docKind.value = isPdf ? 'pdf' : 'image'
   fileName.value = file.name
   imgPointer.value = null
+  imgEscaped.value = false
   pdfPointerActive.value = false
   pdfEscaped.value = false
 
@@ -324,6 +330,7 @@ function resetAll() {
   pdfPointerActive.value = false
   pdfEscaped.value = false
   imgPointer.value = null
+  imgEscaped.value = false
   setStatus('', 'READY · model loaded')
 }
 
@@ -401,7 +408,6 @@ function jumpToMatchingField(proportion: number) {
   const idx = Math.min(rows.length - 1, Math.max(0, Math.floor(proportion * rows.length)))
   const row = rows[idx]
   if (!row) return
-  if (!row) return
   row.scrollIntoView({ block: 'center', behavior: 'smooth' })
   row.classList.add('row-flash')
   if (rowFlashTimer) clearTimeout(rowFlashTimer)
@@ -437,6 +443,41 @@ function onImageClick(e: MouseEvent) {
   jumpToMatchingField(proportion)
 }
 
+/* right panel (OCR table) hover/edit position, mirrored as a pointer on the
+   left panel. Hovering tracks the mouse live; focusing an editable field
+   locks the pointer to that field's position until focus moves elsewhere. */
+function onOcrPointerMove(e: MouseEvent) {
+  if (rightPointerLocked.value) return
+  const el = ocrRef.value
+  if (!el) return
+  const rect = el.getBoundingClientRect()
+  const xPct = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
+  const yPct = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100))
+  rightPointerPct.value = { xPct, yPct }
+}
+
+function onOcrPointerLeave() {
+  if (rightPointerLocked.value) return
+  rightPointerPct.value = null
+}
+
+function onOcrFocusIn(e: FocusEvent) {
+  const el = ocrRef.value
+  const target = e.target as HTMLElement | null
+  if (!el || !target || typeof target.matches !== 'function') return
+  if (!target.matches('[contenteditable="true"], select')) return
+  const panelRect = el.getBoundingClientRect()
+  const fieldRect = target.getBoundingClientRect()
+  const xPct = Math.min(100, Math.max(0, ((fieldRect.left + fieldRect.width / 2 - panelRect.left) / panelRect.width) * 100))
+  const yPct = Math.min(100, Math.max(0, ((fieldRect.top + fieldRect.height / 2 - panelRect.top) / panelRect.height) * 100))
+  rightPointerPct.value = { xPct, yPct }
+  rightPointerLocked.value = true
+}
+
+function onOcrFocusOut() {
+  rightPointerLocked.value = false
+}
+
 /* PDF uploads: native iframe viewer swallows events, so a transparent overlay
    is used just to show a tracking line (no reliable click-to-field mapping).
    Pressing Escape while the cursor is away from the reader dismisses the line
@@ -459,7 +500,9 @@ function onPdfOverlayLeave() {
 }
 
 function onWindowKeydown(e: KeyboardEvent) {
-  if (e.key === 'Escape' && !pdfPointerActive.value) pdfEscaped.value = true
+  if (e.key !== 'Escape') return
+  if (!pdfPointerActive.value) pdfEscaped.value = true
+  if (!imgPointer.value) imgEscaped.value = true
 }
 
 onMounted(() => {
@@ -588,6 +631,7 @@ onBeforeUnmount(() => {
             <div
               ref="pdfOverlayRef"
               class="pdf-pointer-overlay"
+              :class="{ escaped: pdfEscaped }"
               title="Move to track position · press Esc while outside to hide the line for good"
               @mouseenter="onPdfOverlayEnter"
               @mousemove="onPdfOverlayMove"
@@ -595,21 +639,36 @@ onBeforeUnmount(() => {
             >
               <div v-if="pdfLineShow" class="pdf-pointer-line" :style="{ top: pdfLineTop + '%' }" />
             </div>
+            <div v-if="rightPointerPct" class="edit-link-line" :style="{ top: rightPointerPct.yPct + '%' }" />
+            <div
+              v-if="rightPointerPct"
+              class="edit-link-dot"
+              :style="{ top: rightPointerPct.yPct + '%', left: rightPointerPct.xPct + '%' }"
+            />
           </template>
           <div
             v-else-if="docKind === 'image' && docUrl"
             ref="imgWrapRef"
             class="scan-image-wrap"
-            title="Click a spot to jump to the matching field"
+            :class="{ escaped: imgEscaped }"
+            title="Click a spot to jump to the matching field · press Esc while outside to hide the crosshair for good"
             @mousemove="onImagePointerMove"
             @mouseleave="onImagePointerLeave"
             @click="onImageClick"
           >
             <img :src="docUrl" class="scan-image" alt="Uploaded document page" draggable="false">
-            <template v-if="imgPointer">
+            <template v-if="imgPointer && !imgEscaped">
               <div class="scan-crosshair-h" :style="{ top: imgPointer.yPct + '%' }" />
               <div class="scan-crosshair-v" :style="{ left: imgPointer.xPct + '%' }" />
               <div class="scan-crosshair-dot" :style="{ top: imgPointer.yPct + '%', left: imgPointer.xPct + '%' }" />
+            </template>
+            <template v-if="rightPointerPct">
+              <div class="edit-link-h" :style="{ top: rightPointerPct.yPct + '%' }" />
+              <div class="edit-link-v" :style="{ left: rightPointerPct.xPct + '%' }" />
+              <div
+                class="edit-link-dot"
+                :style="{ top: rightPointerPct.yPct + '%', left: rightPointerPct.xPct + '%' }"
+              />
             </template>
           </div>
         </div>
@@ -645,7 +704,15 @@ onBeforeUnmount(() => {
             <div class="h">OCR output will appear here</div>
             <div class="s">Upload a document to see OCR output</div>
           </div>
-          <div ref="ocrRef" class="viewer ocr" :class="{ show: ocrShow }">
+          <div
+            ref="ocrRef"
+            class="viewer ocr"
+            :class="{ show: ocrShow }"
+            @mousemove="onOcrPointerMove"
+            @mouseleave="onOcrPointerLeave"
+            @focusin="onOcrFocusIn"
+            @focusout="onOcrFocusOut"
+          >
             <div class="hint" :class="{ show: hintShow }">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
@@ -1173,6 +1240,9 @@ onBeforeUnmount(() => {
   cursor: crosshair;
   z-index: 2;
 }
+.pdf-pointer-overlay.escaped {
+  cursor: default;
+}
 .pdf-pointer-line {
   position: absolute;
   left: 0;
@@ -1191,6 +1261,9 @@ onBeforeUnmount(() => {
   overflow: hidden;
   cursor: crosshair;
   background: #1a1a1a;
+}
+.scan-image-wrap.escaped {
+  cursor: default;
 }
 .scan-image {
   width: 100%;
@@ -1224,6 +1297,39 @@ onBeforeUnmount(() => {
   border-radius: 50%;
   background: var(--teal);
   box-shadow: 0 0 8px rgba(0, 212, 170, 0.85);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* mirrored pointer: reflects the right panel's hover/edit position onto the
+   left panel, in the orange accent so it's distinct from the teal direct-hover
+   indicators above */
+.edit-link-line,
+.edit-link-h {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 2px dashed var(--orange);
+  box-shadow: 0 0 8px rgba(255, 107, 53, 0.55);
+  pointer-events: none;
+}
+.edit-link-v {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed var(--orange);
+  box-shadow: 0 0 6px rgba(255, 107, 53, 0.55);
+  pointer-events: none;
+}
+.edit-link-dot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--orange);
+  box-shadow: 0 0 8px rgba(255, 107, 53, 0.85);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
