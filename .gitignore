@@ -1,24 +1,51 @@
-# Nuxt dev/build outputs
-.output
-.data
-.nuxt
-.nitro
-.cache
-dist
-
-# Node dependencies
-node_modules
-
-# Logs
-logs
-*.log
-
-# Misc
-.DS_Store
-.fleet
-.idea
-
-# Local env files
+# Environment / secrets
 .env
 .env.*
 !.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Generated output
+generated_schemas.json
+
+# Local PDFs
+*.pdf
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dependencies (pnpm only - see packageManager in package.json)
+node_modules/
+package-lock.json
+yarn.lock
+bun.lockb
+bun.lock
+
+# Nuxt build artifacts
+.nuxt/
+.output/
+.nitro/
+dist/
+
+# Nitro dev storage (sqlite)
+.data/
+
+# Stray dir from `nuxt dev -- --host` treating --host as rootDir
+/--host/
+
+# Extracted form data — contains real names, emails, phone numbers
+files/
+tempFiles/
+scripts/Form_*.json
+scripts/output.json

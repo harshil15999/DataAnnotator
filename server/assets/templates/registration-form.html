@@ -1,0 +1,89 @@
+<!--
+  Shree Arihant Mitra Mandal registration form — the fixed master template.
+
+  This is the document's structure, not the model's guess at it. Every element
+  carrying data-field is a slot the server fills from the model's extracted
+  values; slots that stay empty still render, so the blank form is always what
+  the editor shows. data-options turns a slot into a dropdown, and the server
+  builds the model prompt from these same attributes, so this file is the one
+  place a field is declared.
+
+  Mirrors master_template.pdf. Do not hand-edit the repeated person columns;
+  they are five identical slots per row by construction.
+-->
+<section class="page" data-marker="PAGE 1 / 2" data-title="Shree Arihant Mitra Mandal — Registration Form" data-sub="(Please fill this form in English)">
+    <table class="ftab">
+      <colgroup>
+        <col style="width:22px"><col style="width:30%"><col><col><col><col><col>
+      </colgroup>
+      <tbody>
+      <tr><td class="hdr" colspan="2">Details</td><td class="hdr">First Name</td><td class="hdr">Middle Name</td><td class="hdr">Last Name</td><td class="hdr">FORM NO :</td><td class="data" data-field="form_no" data-summary="Form No"></td></tr>
+      <tr><td class="num">1</td><td class="lbl">Grand Father of Head of the Family:</td><td class="data" data-field="grandfather.first"></td><td class="data" data-field="grandfather.middle"></td><td class="data" data-field="grandfather.last"></td><td class="lbl">Village:</td><td class="data" data-field="village" data-summary="Village"></td></tr>
+      <tr><td class="num">2</td><td class="lbl">Father of Head of the Family :</td><td class="data" data-field="father.first"></td><td class="data" data-field="father.middle"></td><td class="data" data-field="father.last"></td><td class="lbl">Total Members in Family:</td><td class="data" data-field="total_members" data-summary="Total Members"></td></tr>
+      <tr><td></td><td></td><td class="hdr">Head of the Family</td><td class="hdr">Person - 2</td><td class="hdr">Person - 3</td><td class="hdr">Person - 4</td><td class="hdr">Person - 5</td></tr>
+      <tr><td class="num">3</td><td class="lbl">Name:</td><td class="data" data-field="p1.name"></td><td class="data" data-field="p2.name"></td><td class="data" data-field="p3.name"></td><td class="data" data-field="p4.name"></td><td class="data" data-field="p5.name"></td></tr>
+      <tr><td class="num">4</td><td class="lbl">Father / Husband Name:</td><td class="data" data-field="p1.father_husband"></td><td class="data" data-field="p2.father_husband"></td><td class="data" data-field="p3.father_husband"></td><td class="data" data-field="p4.father_husband"></td><td class="data" data-field="p5.father_husband"></td></tr>
+      <tr><td class="num">5</td><td class="lbl">Surname:</td><td class="data" data-field="p1.surname"></td><td class="data" data-field="p2.surname"></td><td class="data" data-field="p3.surname"></td><td class="data" data-field="p4.surname"></td><td class="data" data-field="p5.surname"></td></tr>
+      <tr><td class="num">6</td><td class="lbl">Relation with 'Head':</td><td class="data" data-field="p1.relation"></td><td class="data" data-field="p2.relation"></td><td class="data" data-field="p3.relation"></td><td class="data" data-field="p4.relation"></td><td class="data" data-field="p5.relation"></td></tr>
+      <tr><td class="num">7</td><td class="lbl">Gender:</td><td class="select" data-field="p1.gender" data-options="Male|Female"></td><td class="select" data-field="p2.gender" data-options="Male|Female"></td><td class="select" data-field="p3.gender" data-options="Male|Female"></td><td class="select" data-field="p4.gender" data-options="Male|Female"></td><td class="select" data-field="p5.gender" data-options="Male|Female"></td></tr>
+      <tr><td class="num">8</td><td class="lbl">Member of Arihant Mandal</td><td class="select" data-field="p1.member" data-options="Yes|No"></td><td class="select" data-field="p2.member" data-options="Yes|No"></td><td class="select" data-field="p3.member" data-options="Yes|No"></td><td class="select" data-field="p4.member" data-options="Yes|No"></td><td class="select" data-field="p5.member" data-options="Yes|No"></td></tr>
+      <tr><td class="num">9</td><td class="lbl">Date of Birth (DD/MM/YYYY):</td><td class="data" data-field="p1.dob"></td><td class="data" data-field="p2.dob"></td><td class="data" data-field="p3.dob"></td><td class="data" data-field="p4.dob"></td><td class="data" data-field="p5.dob"></td></tr>
+      <tr><td class="num">10</td><td class="lbl">Level of Education:</td><td class="select" data-field="p1.education_level" data-options="Under Graduate|Graduate|Post Graduate|Doctorate"></td><td class="select" data-field="p2.education_level" data-options="Under Graduate|Graduate|Post Graduate|Doctorate"></td><td class="select" data-field="p3.education_level" data-options="Under Graduate|Graduate|Post Graduate|Doctorate"></td><td class="select" data-field="p4.education_level" data-options="Under Graduate|Graduate|Post Graduate|Doctorate"></td><td class="select" data-field="p5.education_level" data-options="Under Graduate|Graduate|Post Graduate|Doctorate"></td></tr>
+      <tr><td class="num">11</td><td class="lbl">Field of Education:</td><td class="data" data-field="p1.education_field"></td><td class="data" data-field="p2.education_field"></td><td class="data" data-field="p3.education_field"></td><td class="data" data-field="p4.education_field"></td><td class="data" data-field="p5.education_field"></td></tr>
+      <tr><td class="num">12</td><td class="lbl">Other Educational Qualification:</td><td class="data" data-field="p1.other_qualification"></td><td class="data" data-field="p2.other_qualification"></td><td class="data" data-field="p3.other_qualification"></td><td class="data" data-field="p4.other_qualification"></td><td class="data" data-field="p5.other_qualification"></td></tr>
+      <tr><td class="num">13</td><td class="lbl">Type of Occupation:</td><td class="select" data-field="p1.occupation_type" data-options="Business|Job|House Wife|Student|Other"></td><td class="select" data-field="p2.occupation_type" data-options="Business|Job|House Wife|Student|Other"></td><td class="select" data-field="p3.occupation_type" data-options="Business|Job|House Wife|Student|Other"></td><td class="select" data-field="p4.occupation_type" data-options="Business|Job|House Wife|Student|Other"></td><td class="select" data-field="p5.occupation_type" data-options="Business|Job|House Wife|Student|Other"></td></tr>
+      <tr><td class="num">14</td><td class="lbl">Field of Occupation:</td><td class="data" data-field="p1.occupation_field"></td><td class="data" data-field="p2.occupation_field"></td><td class="data" data-field="p3.occupation_field"></td><td class="data" data-field="p4.occupation_field"></td><td class="data" data-field="p5.occupation_field"></td></tr>
+      <tr><td class="num">15</td><td class="lbl">Company Name :</td><td class="data" data-field="p1.company"></td><td class="data" data-field="p2.company"></td><td class="data" data-field="p3.company"></td><td class="data" data-field="p4.company"></td><td class="data" data-field="p5.company"></td></tr>
+      <tr><td class="num">16</td><td class="lbl">Blood Group:</td><td class="data" data-field="p1.blood_group"></td><td class="data" data-field="p2.blood_group"></td><td class="data" data-field="p3.blood_group"></td><td class="data" data-field="p4.blood_group"></td><td class="data" data-field="p5.blood_group"></td></tr>
+      <tr><td class="num">17</td><td class="lbl">Marital Status :</td><td class="select" data-field="p1.marital_status" data-options="Married|Unmarried"></td><td class="select" data-field="p2.marital_status" data-options="Married|Unmarried"></td><td class="select" data-field="p3.marital_status" data-options="Married|Unmarried"></td><td class="select" data-field="p4.marital_status" data-options="Married|Unmarried"></td><td class="select" data-field="p5.marital_status" data-options="Married|Unmarried"></td></tr>
+      <tr><td class="num">18</td><td class="lbl">Date of Marriage:</td><td class="data" data-field="p1.marriage_date"></td><td class="data" data-field="p2.marriage_date"></td><td class="data" data-field="p3.marriage_date"></td><td class="data" data-field="p4.marriage_date"></td><td class="data" data-field="p5.marriage_date"></td></tr>
+      <tr><td class="num">19</td><td class="lbl">Name of Father :</td><td class="data" data-field="p1.father_name"></td><td class="data" data-field="p2.father_name"></td><td class="data" data-field="p3.father_name"></td><td class="data" data-field="p4.father_name"></td><td class="data" data-field="p5.father_name"></td></tr>
+      <tr><td class="num">20</td><td class="lbl">Name of Mother :</td><td class="data" data-field="p1.mother_name"></td><td class="data" data-field="p2.mother_name"></td><td class="data" data-field="p3.mother_name"></td><td class="data" data-field="p4.mother_name"></td><td class="data" data-field="p5.mother_name"></td></tr>
+      </tbody>
+    </table>
+</section>
+
+<section class="page" data-marker="PAGE 2 / 2">
+    <table class="ftab">
+      <colgroup>
+        <col style="width:22px"><col style="width:30%"><col><col><col><col><col>
+      </colgroup>
+      <tbody>
+      <tr><td></td><td class="hdr">FORM NO :</td><td class="data" data-field="form_no"></td><td class="hdr" colspan="4">(Page 2)</td></tr>
+      <tr><td></td><td></td><td class="hdr">Head of the Family</td><td class="hdr">Person - 2</td><td class="hdr">Person - 3</td><td class="hdr">Person - 4</td><td class="hdr">Person - 5</td></tr>
+      <tr><td class="num">21</td><td class="lbl">Native Village of Father:</td><td class="data" data-field="p1.native_village"></td><td class="data" data-field="p2.native_village"></td><td class="data" data-field="p3.native_village"></td><td class="data" data-field="p4.native_village"></td><td class="data" data-field="p5.native_village"></td></tr>
+      <tr><td class="num">22</td><td class="lbl">Home Address:</td><td class="data" data-field="p1.home_address"></td><td class="data" data-field="p2.home_address"></td><td class="data" data-field="p3.home_address"></td><td class="data" data-field="p4.home_address"></td><td class="data" data-field="p5.home_address"></td></tr>
+      <tr><td></td><td class="lbl">Land-mark :</td><td class="data" data-field="p1.home_landmark"></td><td class="data" data-field="p2.home_landmark"></td><td class="data" data-field="p3.home_landmark"></td><td class="data" data-field="p4.home_landmark"></td><td class="data" data-field="p5.home_landmark"></td></tr>
+      <tr><td></td><td class="lbl">Area</td><td class="data" data-field="p1.home_area"></td><td class="data" data-field="p2.home_area"></td><td class="data" data-field="p3.home_area"></td><td class="data" data-field="p4.home_area"></td><td class="data" data-field="p5.home_area"></td></tr>
+      <tr><td></td><td class="lbl">City:</td><td class="data" data-field="p1.home_city"></td><td class="data" data-field="p2.home_city"></td><td class="data" data-field="p3.home_city"></td><td class="data" data-field="p4.home_city"></td><td class="data" data-field="p5.home_city"></td></tr>
+      <tr><td></td><td class="lbl">State</td><td class="data" data-field="p1.home_state"></td><td class="data" data-field="p2.home_state"></td><td class="data" data-field="p3.home_state"></td><td class="data" data-field="p4.home_state"></td><td class="data" data-field="p5.home_state"></td></tr>
+      <tr><td></td><td class="lbl">Country:</td><td class="data" data-field="p1.home_country"></td><td class="data" data-field="p2.home_country"></td><td class="data" data-field="p3.home_country"></td><td class="data" data-field="p4.home_country"></td><td class="data" data-field="p5.home_country"></td></tr>
+      <tr><td></td><td class="lbl">Pin Code:</td><td class="data" data-field="p1.home_pin"></td><td class="data" data-field="p2.home_pin"></td><td class="data" data-field="p3.home_pin"></td><td class="data" data-field="p4.home_pin"></td><td class="data" data-field="p5.home_pin"></td></tr>
+      <tr><td class="num">23</td><td class="lbl">Office Address:</td><td class="data" data-field="p1.office_address"></td><td class="data" data-field="p2.office_address"></td><td class="data" data-field="p3.office_address"></td><td class="data" data-field="p4.office_address"></td><td class="data" data-field="p5.office_address"></td></tr>
+      <tr><td></td><td class="lbl">Area:</td><td class="data" data-field="p1.office_area"></td><td class="data" data-field="p2.office_area"></td><td class="data" data-field="p3.office_area"></td><td class="data" data-field="p4.office_area"></td><td class="data" data-field="p5.office_area"></td></tr>
+      <tr><td></td><td class="lbl">City:</td><td class="data" data-field="p1.office_city"></td><td class="data" data-field="p2.office_city"></td><td class="data" data-field="p3.office_city"></td><td class="data" data-field="p4.office_city"></td><td class="data" data-field="p5.office_city"></td></tr>
+      <tr><td></td><td class="lbl">State:</td><td class="data" data-field="p1.office_state"></td><td class="data" data-field="p2.office_state"></td><td class="data" data-field="p3.office_state"></td><td class="data" data-field="p4.office_state"></td><td class="data" data-field="p5.office_state"></td></tr>
+      <tr><td></td><td class="lbl">Country:</td><td class="data" data-field="p1.office_country"></td><td class="data" data-field="p2.office_country"></td><td class="data" data-field="p3.office_country"></td><td class="data" data-field="p4.office_country"></td><td class="data" data-field="p5.office_country"></td></tr>
+      <tr><td></td><td class="lbl">Pin Code:</td><td class="data" data-field="p1.office_pin"></td><td class="data" data-field="p2.office_pin"></td><td class="data" data-field="p3.office_pin"></td><td class="data" data-field="p4.office_pin"></td><td class="data" data-field="p5.office_pin"></td></tr>
+      <tr><td class="num">24</td><td class="lbl">Residence Phone No:</td><td class="data" data-field="p1.residence_phone"></td><td class="data" data-field="p2.residence_phone"></td><td class="data" data-field="p3.residence_phone"></td><td class="data" data-field="p4.residence_phone"></td><td class="data" data-field="p5.residence_phone"></td></tr>
+      <tr><td class="num">25</td><td class="lbl">Office Phone No:</td><td class="data" data-field="p1.office_phone"></td><td class="data" data-field="p2.office_phone"></td><td class="data" data-field="p3.office_phone"></td><td class="data" data-field="p4.office_phone"></td><td class="data" data-field="p5.office_phone"></td></tr>
+      <tr><td class="num">26</td><td class="lbl">Mobile No1:</td><td class="data" data-field="p1.mobile1"></td><td class="data" data-field="p2.mobile1"></td><td class="data" data-field="p3.mobile1"></td><td class="data" data-field="p4.mobile1"></td><td class="data" data-field="p5.mobile1"></td></tr>
+      <tr><td class="num">27</td><td class="lbl">Mobile No2:</td><td class="data" data-field="p1.mobile2"></td><td class="data" data-field="p2.mobile2"></td><td class="data" data-field="p3.mobile2"></td><td class="data" data-field="p4.mobile2"></td><td class="data" data-field="p5.mobile2"></td></tr>
+      <tr><td class="num">28</td><td class="lbl">Email Address:</td><td class="data" data-field="p1.email"></td><td class="data" data-field="p2.email"></td><td class="data" data-field="p3.email"></td><td class="data" data-field="p4.email"></td><td class="data" data-field="p5.email"></td></tr>
+      <tr><td class="num">29</td><td class="lbl">Website Address:</td><td class="data" data-field="p1.website"></td><td class="data" data-field="p2.website"></td><td class="data" data-field="p3.website"></td><td class="data" data-field="p4.website"></td><td class="data" data-field="p5.website"></td></tr>
+      <tr><td class="num">30</td><td class="lbl">Other Achievements:</td><td class="data" data-field="p1.achievements"></td><td class="data" data-field="p2.achievements"></td><td class="data" data-field="p3.achievements"></td><td class="data" data-field="p4.achievements"></td><td class="data" data-field="p5.achievements"></td></tr>
+      </tbody>
+    </table>
+    <div class="notes">
+      <div class="nt">Extra Notes:-</div>
+      <div class="sb">If there is any DIKSHA in family please provide details below and at back of the form.</div>
+      <div class="grid">
+        <div><span class="notelbl">1) Sansaari naam:</span><span class="notedata" data-field="notes.sansaari_naam"></span></div>
+        <div><span class="notelbl">5) Guru Naam:</span><span class="notedata" data-field="notes.guru_naam"></span></div>
+        <div><span class="notelbl">2) Gaam:</span><span class="notedata" data-field="notes.gaam"></span></div>
+        <div><span class="notelbl">6) Samuday:</span><span class="notedata" data-field="notes.samuday"></span></div>
+        <div><span class="notelbl">3) Diksharthi naam:</span><span class="notedata" data-field="notes.diksharthi_naam"></span></div>
+        <div><span class="notelbl">4) Diksha taarikh ane tithi:</span><span class="notedata" data-field="notes.diksha_date"></span></div>
+      </div>
+    </div>
+</section>

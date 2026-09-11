@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+  # native .node binding; without this pnpm skips prebuild-install silently
+  better-sqlite3: true

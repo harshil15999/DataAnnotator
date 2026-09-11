@@ -1,0 +1,516 @@
+{
+  
+    "title": "FamilyRegistrationFormExtraction",
+    "description": "Extract structured information from the family registration form, including form metadata, family-level information, the Head of the Family, additional family members, and Diksha information.",
+    "type": "object",
+    "properties": {
+      "form_metadata": {
+        "type": "object",
+        "description": "Information identifying the registration form itself.",
+        "properties": {
+          "form_number": {
+            "type": "string",
+            "description": "The form number printed on the registration form."
+          }
+        }
+      },
+
+      "family_metadata": {
+        "type": "object",
+        "description": "Information that applies to the family as a whole rather than to an individual family member.",
+        "properties": {
+          "ancestral_village": {
+            "type": "string",
+            "description": "The ancestral or native village (gaam) of the family."
+          },
+          "total_members": {
+            "type": "number",
+            "description": "The total number of family members represented in the form."
+          },
+          "grandfather_of_head": {
+            "type": "object",
+            "description": "Full name of the grandfather of the Head of the Family.",
+            "properties": {
+              "first_name": {
+                "type": "string",
+                "description": "First name of the grandfather."
+              },
+              "middle_name": {
+                "type": "string",
+                "description": "Middle name of the grandfather."
+              },
+              "last_name": {
+                "type": "string",
+                "description": "Last name or surname of the grandfather."
+              }
+            }
+          },
+          "father_of_head": {
+            "type": "object",
+            "description": "Full name of the father of the Head of the Family.",
+            "properties": {
+              "first_name": {
+                "type": "string",
+                "description": "First name of the father."
+              },
+              "middle_name": {
+                "type": "string",
+                "description": "Middle name of the father."
+              },
+              "last_name": {
+                "type": "string",
+                "description": "Last name or surname of the father."
+              }
+            }
+          }
+        }
+      },
+
+      "head_of_family": {
+        "type": "object",
+        "description": "Information recorded in the Head of the Family column of the form.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the Head of the Family."
+          },
+          "father_or_husband_name": {
+            "type": "string",
+            "description": "Father's or husband's name of the Head of the Family."
+          },
+          "surname": {
+            "type": "string",
+            "description": "Surname or last name of the Head of the Family."
+          },
+          "relation_with_head": {
+            "type": "string",
+            "description": "Relationship with the Head of the Family. For the Head of the Family, preserve the value if explicitly written; otherwise leave blank."
+          },
+          "gender": {
+            "type": "string",
+            "description": "Gender of the Head of the Family. The form options are Male or Female."
+          },
+          "is_member_of_organization": {
+            "type": "string",
+            "description": "Whether the Head of the Family is a member of the organization. The form options are Yes or No."
+          },
+          "date_of_birth": {
+            "type": "string",
+            "description": "Date of birth of the Head of the Family. Preserve the date as written on the form."
+          },
+          "education": {
+            "type": "object",
+            "description": "Educational background of the Head of the Family.",
+            "properties": {
+              "level_of_education": {
+                "type": "string",
+                "description": "Highest educational level. The form options are Under Graduate, Graduate, Post Graduate, or Doctorate."
+              },
+              "field_of_education": {
+                "type": "string",
+                "description": "Field or discipline of education."
+              },
+              "other_qualifications": {
+                "type": "string",
+                "description": "Other educational qualifications or degrees."
+              }
+            }
+          },
+          "occupation": {
+            "type": "object",
+            "description": "Occupation and employment information of the Head of the Family.",
+            "properties": {
+              "occupation_type": {
+                "type": "string",
+                "description": "Occupation category. The form options are Business, Job, House Wife, Student, or Other."
+              },
+              "field_of_occupation": {
+                "type": "string",
+                "description": "Field or sector of occupation."
+              },
+              "company_name": {
+                "type": "string",
+                "description": "Name of the company, employer, or business."
+              }
+            }
+          },
+          "blood_group": {
+            "type": "string",
+            "description": "Blood group of the Head of the Family."
+          },
+          "marital_status": {
+            "type": "string",
+            "description": "Marital status. The form options are Married or Unmarried."
+          },
+          "date_of_marriage": {
+            "type": "string",
+            "description": "Date of marriage, if provided."
+          },
+          "parents": {
+            "type": "object",
+            "description": "Parents of the Head of the Family.",
+            "properties": {
+              "father_name": {
+                "type": "string",
+                "description": "Name of the father."
+              },
+              "mother_name": {
+                "type": "string",
+                "description": "Name of the mother."
+              }
+            }
+          },
+          "native_village_of_father": {
+            "type": "string",
+            "description": "Native village of the father."
+          },
+          "home_address": {
+            "type": "object",
+            "description": "Residential address of the Head of the Family.",
+            "properties": {
+              "address_line": {
+                "type": "string",
+                "description": "Home address."
+              },
+              "landmark": {
+                "type": "string",
+                "description": "Landmark near the home address."
+              },
+              "area": {
+                "type": "string",
+                "description": "Home area or locality."
+              },
+              "city": {
+                "type": "string",
+                "description": "Home city."
+              },
+              "state": {
+                "type": "string",
+                "description": "Home state."
+              },
+              "country": {
+                "type": "string",
+                "description": "Home country."
+              },
+              "pincode": {
+                "type": "string",
+                "description": "Home postal PIN code."
+              }
+            }
+          },
+          "office_address": {
+            "type": "object",
+            "description": "Office or workplace address of the Head of the Family.",
+            "properties": {
+              "address_line": {
+                "type": "string",
+                "description": "Office address."
+              },
+              "area": {
+                "type": "string",
+                "description": "Office area or locality."
+              },
+              "city": {
+                "type": "string",
+                "description": "Office city."
+              },
+              "state": {
+                "type": "string",
+                "description": "Office state."
+              },
+              "country": {
+                "type": "string",
+                "description": "Office country."
+              },
+              "pincode": {
+                "type": "string",
+                "description": "Office postal PIN code."
+              }
+            }
+          },
+          "contact_information": {
+            "type": "object",
+            "description": "Contact information of the Head of the Family.",
+            "properties": {
+              "residence_phone": {
+                "type": "string",
+                "description": "Residence or landline telephone number."
+              },
+              "office_phone": {
+                "type": "string",
+                "description": "Office telephone number."
+              },
+              "mobile_1": {
+                "type": "string",
+                "description": "Primary mobile telephone number."
+              },
+              "mobile_2": {
+                "type": "string",
+                "description": "Secondary mobile telephone number."
+              },
+              "email": {
+                "type": "string",
+                "description": "Email address."
+              },
+              "website": {
+                "type": "string",
+                "description": "Website address."
+              }
+            }
+          },
+          "achievements": {
+            "type": "string",
+            "description": "Achievements or other notable information about the Head of the Family."
+          }
+        }
+      },
+
+      "family_members": {
+        "type": "array",
+        "description": "Family members other than the Head of the Family. Each item corresponds to one of the remaining form columns: Person - 2, Person - 3, Person - 4, or Person - 5. Preserve the column identity using member_role.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "member_role": {
+              "type": "string",
+              "description": "The form column corresponding to this person. Valid column identities are Person - 2, Person - 3, Person - 4, and Person - 5."
+            },
+            "name": {
+              "type": "string",
+              "description": "Name of the family member."
+            },
+            "father_or_husband_name": {
+              "type": "string",
+              "description": "Father's or husband's name."
+            },
+            "surname": {
+              "type": "string",
+              "description": "Surname or last name."
+            },
+            "relation_with_head": {
+              "type": "string",
+              "description": "Relationship of the person with the Head of the Family."
+            },
+            "gender": {
+              "type": "string",
+              "description": "Gender of the member. The form options are Male or Female."
+            },
+            "is_member_of_organization": {
+              "type": "string",
+              "description": "Whether the person is a member of the organization. The form options are Yes or No."
+            },
+            "date_of_birth": {
+              "type": "string",
+              "description": "Date of birth. Preserve the date as written on the form."
+            },
+            "education": {
+              "type": "object",
+              "description": "Educational background and qualifications.",
+              "properties": {
+                "level_of_education": {
+                  "type": "string",
+                  "description": "Highest educational level. The form options are Under Graduate, Graduate, Post Graduate, or Doctorate."
+                },
+                "field_of_education": {
+                  "type": "string",
+                  "description": "Field or discipline of education."
+                },
+                "other_qualifications": {
+                  "type": "string",
+                  "description": "Other educational qualifications or degrees."
+                }
+              }
+            },
+            "occupation": {
+              "type": "object",
+              "description": "Occupation and employment information.",
+              "properties": {
+                "occupation_type": {
+                  "type": "string",
+                  "description": "Occupation category. The form options are Business, Job, House Wife, Student, or Other."
+                },
+                "field_of_occupation": {
+                  "type": "string",
+                  "description": "Field or sector of occupation."
+                },
+                "company_name": {
+                  "type": "string",
+                  "description": "Name of the company, employer, or business."
+                }
+              }
+            },
+            "blood_group": {
+              "type": "string",
+              "description": "Blood group of the family member."
+            },
+            "marital_status": {
+              "type": "string",
+              "description": "Marital status. The form options are Married or Unmarried."
+            },
+            "date_of_marriage": {
+              "type": "string",
+              "description": "Date of marriage, if provided."
+            },
+            "parents": {
+              "type": "object",
+              "description": "Parents of the family member.",
+              "properties": {
+                "father_name": {
+                  "type": "string",
+                  "description": "Name of the father."
+                },
+                "mother_name": {
+                  "type": "string",
+                  "description": "Name of the mother."
+                }
+              }
+            },
+            "native_village_of_father": {
+              "type": "string",
+              "description": "Native village of the family member's father."
+            },
+            "home_address": {
+              "type": "object",
+              "description": "Residential address.",
+              "properties": {
+                "address_line": {
+                  "type": "string",
+                  "description": "Home address."
+                },
+                "landmark": {
+                  "type": "string",
+                  "description": "Landmark near the home address."
+                },
+                "area": {
+                  "type": "string",
+                  "description": "Home area or locality."
+                },
+                "city": {
+                  "type": "string",
+                  "description": "Home city."
+                },
+                "state": {
+                  "type": "string",
+                  "description": "Home state."
+                },
+                "country": {
+                  "type": "string",
+                  "description": "Home country."
+                },
+                "pincode": {
+                  "type": "string",
+                  "description": "Home postal PIN code."
+                }
+              }
+            },
+            "office_address": {
+              "type": "object",
+              "description": "Office or workplace address.",
+              "properties": {
+                "address_line": {
+                  "type": "string",
+                  "description": "Office address."
+                },
+                "area": {
+                  "type": "string",
+                  "description": "Office area or locality."
+                },
+                "city": {
+                  "type": "string",
+                  "description": "Office city."
+                },
+                "state": {
+                  "type": "string",
+                  "description": "Office state."
+                },
+                "country": {
+                  "type": "string",
+                  "description": "Office country."
+                },
+                "pincode": {
+                  "type": "string",
+                  "description": "Office postal PIN code."
+                }
+              }
+            },
+            "contact_information": {
+              "type": "object",
+              "description": "Contact information.",
+              "properties": {
+                "residence_phone": {
+                  "type": "string",
+                  "description": "Residence or landline telephone number."
+                },
+                "office_phone": {
+                  "type": "string",
+                  "description": "Office telephone number."
+                },
+                "mobile_1": {
+                  "type": "string",
+                  "description": "Primary mobile telephone number."
+                },
+                "mobile_2": {
+                  "type": "string",
+                  "description": "Secondary mobile telephone number."
+                },
+                "email": {
+                  "type": "string",
+                  "description": "Email address."
+                },
+                "website": {
+                  "type": "string",
+                  "description": "Website address."
+                }
+              }
+            },
+            "achievements": {
+              "type": "string",
+              "description": "Achievements or other notable information about the family member."
+            }
+          },
+          "required": [
+            "name"
+          ]
+        }
+      },
+
+      "diksha_information": {
+        "type": "object",
+        "description": "Diksha-related information recorded in the notes section of the form.",
+        "properties": {
+          "sansaari_naam": {
+            "type": "string",
+            "description": "Sansaari Naam recorded on the form."
+          },
+          "guru_naam": {
+            "type": "string",
+            "description": "Guru Naam recorded on the form."
+          },
+          "gaam": {
+            "type": "string",
+            "description": "Gaam or village recorded in the Diksha section."
+          },
+          "samuday": {
+            "type": "string",
+            "description": "Samuday recorded on the form."
+          },
+          "diksharthi_naam": {
+            "type": "string",
+            "description": "Diksharthi Naam recorded on the form."
+          },
+          "diksha_date_and_tithi": {
+            "type": "string",
+            "description": "Diksha date and tithi recorded on the form."
+          }
+        }
+      }
+    },
+
+    "required": [
+      "form_metadata",
+      "family_metadata",
+      "head_of_family",
+      "family_members"
+    ]
+  
+}

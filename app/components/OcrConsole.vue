@@ -1,190 +1,100 @@
 <script setup lang="ts">
+import type { Ref } from 'vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
-interface Cell {
-  t?: string
-  k?: string
-  cs?: number
+/* ---------- server contract (see server/api/form.get.ts) ---------- */
+
+/** One fillable slot the master template declares. */
+interface FieldSpec {
+  key: string
   options?: string[]
-  value?: string
+  summary?: string
 }
 
-interface PageDef {
+interface FormPage {
+  /** Page banner, e.g. "PAGE 1 / 3". */
   marker: string
-  title?: string
-  sub?: string
-  table?: Cell[][]
-  notes?: { title: string; sub: string; items: { label: string; value: string }[] }
-  blank?: boolean
+  title: string
+  sub: string
+  /** The page's body with its slots filled in. Each slot is editable. */
+  html: string
+  blank: boolean
+  fields: FieldSpec[]
 }
 
-/* ---------- form data (Shree Arihant Mitra Mandal registration form) ---------- */
-const H = (t: string, cs?: number): Cell => ({ t, k: 'hdr', cs })
-const N = (t: string): Cell => ({ t, k: 'num' })
-const L = (t: string): Cell => ({ t, k: 'lbl' })
-const D = (t = ''): Cell => ({ t, k: 'data' })
-const SEL = (options: string[]): Cell => ({ k: 'select', options, value: '' })
-const E = (): Cell => ({ t: '', k: '' })
-const fiveD = (): Cell[] => [D(), D(), D(), D(), D()]
-const fiveSel = (options: string[]): Cell[] => [SEL(options), SEL(options), SEL(options), SEL(options), SEL(options)]
-const personHead = (): Cell[] => [
-  E(),
-  E(),
-  H('Head of the Family'),
-  H('Person - 2'),
-  H('Person - 3'),
-  H('Person - 4'),
-  H('Person - 5'),
-]
-
-const PAGE1: Cell[][] = [
-  [H('Details', 2), H('First Name'), H('Middle Name'), H('Last Name'), H('FORM NO :'), D()],
-  [N('1'), L('Grand Father of Head of the Family:'), D(), D(), D(), L('Village:'), D()],
-  [N('2'), L('Father of Head of the Family :'), D(), D(), D(), L('Total Members in Family:'), D()],
-  personHead(),
-  [N('3'), L('Name:'), ...fiveD()],
-  [N('4'), L('Father / Husband Name:'), ...fiveD()],
-  [N('5'), L('Surname:'), ...fiveD()],
-  [N('6'), L("Relation with 'Head':"), ...fiveD()],
-  [N('7'), L('Gender:'), ...fiveSel(['Male', 'Female'])],
-  [N('8'), L('Member of Arihant Mandal'), ...fiveSel(['Yes', 'No'])],
-  [N('9'), L('Date of Birth (DD/MM/YYYY):'), ...fiveD()],
-  [N('10'), L('Level of Education:'), ...fiveSel(['Under Graduate', 'Graduate', 'Post Graduate', 'Doctorate'])],
-  [N('11'), L('Field of Education:'), ...fiveD()],
-  [N('12'), L('Other Educational Qualification:'), ...fiveD()],
-  [N('13'), L('Type of Occupation:'), ...fiveSel(['Business', 'Job', 'House Wife', 'Student', 'Other'])],
-  [N('14'), L('Field of Occupation:'), ...fiveD()],
-  [N('15'), L('Company Name :'), ...fiveD()],
-  [N('16'), L('Blood Group:'), ...fiveD()],
-  [N('17'), L('Marital Status :'), ...fiveSel(['Married', 'Unmarried'])],
-  [N('18'), L('Date of Marriage:'), ...fiveD()],
-  [N('19'), L('Name of Father :'), ...fiveD()],
-  [N('20'), L('Name of Mother :'), ...fiveD()],
-]
-
-const PAGE2: Cell[][] = [
-  personHead(),
-  [N('21'), L('Native Village of Father:'), ...fiveD()],
-  [N('22'), L('Home Address:'), ...fiveD()],
-  [E(), L('Land-mark :'), ...fiveD()],
-  [E(), L('Area'), ...fiveD()],
-  [E(), L('City:'), ...fiveD()],
-  [E(), L('State'), ...fiveD()],
-  [E(), L('Country:'), ...fiveD()],
-  [E(), L('Pin Code:'), ...fiveD()],
-  [N('23'), L('Office Address:'), ...fiveD()],
-  [E(), L('Area:'), ...fiveD()],
-  [E(), L('City:'), ...fiveD()],
-  [E(), L('State:'), ...fiveD()],
-  [E(), L('Country:'), ...fiveD()],
-  [E(), L('Pin Code:'), ...fiveD()],
-  [N('24'), L('Residence Phone No:'), ...fiveD()],
-  [N('25'), L('Office Phone No:'), ...fiveD()],
-  [N('26'), L('Mobile No1:'), ...fiveD()],
-  [N('27'), L('Mobile No2:'), ...fiveD()],
-  [N('28'), L('Email Address:'), ...fiveD()],
-  [N('29'), L('Website Address:'), ...fiveD()],
-  [N('30'), L('Other Achievements:'), ...fiveD()],
-]
-
-const NOTES = {
-  title: 'Extra Notes:-',
-  sub: 'If there is any DIKSHA in family please provide details below and at back of the form.',
-  items: [
-    { label: '1) Sansaari naam:', value: '' },
-    { label: '5) Guru Naam:', value: '' },
-    { label: '2) Gaam:', value: '' },
-    { label: '6) Samuday:', value: '' },
-    { label: '3) Diksharthi naam:', value: '' },
-    { label: '4) Diksha taarikh ane tithi:', value: '' },
-  ],
+interface OcrResponse {
+  pages: FormPage[]
+  values: Record<string, string>
+  totalPages: number
+  filledFields: number
+  totalFields: number
 }
-
-const PAGES: PageDef[] = [
-  {
-    marker: 'PAGE 1 / 3',
-    title: 'Shree Arihant Mitra Mandal — Registration Form',
-    sub: '(Please fill this form in English)',
-    table: PAGE1,
-  },
-  { marker: 'PAGE 2 / 3', sub: 'FORM NO: (Page 2)', table: PAGE2, notes: NOTES },
-  { marker: 'PAGE 3 / 3', blank: true },
-]
-
-function serialize(): string {
-  const out: string[] = []
-  PAGES.forEach((p) => {
-    out.push(`── ${p.marker} ──`)
-    if (p.blank) {
-      out.push('(no text detected)')
-      return
-    }
-    if (p.title) out.push(p.title)
-    if (p.sub) out.push(p.sub)
-    if (p.table) p.table.forEach((r) => out.push(r.map((c) => c.t || '').filter(Boolean).join('  |  ')))
-    if (p.notes) out.push(p.notes.title, p.notes.sub, ...p.notes.items.map((it) => `${it.label} ${it.value}`.trim()))
-  })
-  return out.join('\n')
-}
-
-const fullText = serialize()
 
 /* ---------- reactive app state ---------- */
-const mode = ref<'LONG' | 'BASE'>('LONG')
-const ngramOn = ref(true)
+/** True once GET PDF has put a queued document on screen. */
 const loaded = ref(false)
-const running = ref(false)
 const statusClass = ref('')
 const statusText = ref('READY · model loaded')
-const pageCount = ref(0)
-const charCount = ref(0)
 const inputBadgeClass = ref('badge empty')
 const inputBadgeText = ref('EMPTY')
 const outBadgeClass = ref('badge waiting')
 const outBadgeText = ref('WAITING')
-const progressWidth = ref('0%')
-const revealCount = ref(0)
-const hintShow = ref(false)
 const toastText = ref('Copied to clipboard')
 const toastShow = ref(false)
+
+/* ---------- the form being annotated ---------- */
+/**
+ * The master form, as the server rendered it. It is fetched blank the moment
+ * the console loads and re-rendered with a document's values once one is taken
+ * from the queue, so the panel always holds the same complete, editable form —
+ * the extraction only decides how much of it arrives pre-filled.
+ */
+const formPages = ref<FormPage[]>([])
+/**
+ * Slots the user has typed into. A model answer that lands afterwards fills the
+ * rest of the form without overwriting a correction already made by hand.
+ */
+const editedKeys = ref(new Set<string>())
+
+/* ---------- the validation queue ---------- */
+/** The document handed over by GET PDF, or null when none is being checked. */
+const queueId = ref<number | null>(null)
+const queueBusy = ref(false)
+const queueStats = ref<Record<string, number> | null>(null)
 
 const scanRef = ref<HTMLElement | null>(null)
 const ocrRef = ref<HTMLElement | null>(null)
 const ocrBodyRef = ref<HTMLElement | null>(null)
-const fileInputRef = ref<HTMLInputElement | null>(null)
-const docUrl = ref<string | null>(null)
-const docKind = ref<'pdf' | 'image' | null>(null)
+/** The queued document's own filename, shown in the panel header. */
 const fileName = ref('')
-const dragActive = ref(false)
 
-/* ---------- cursor-linked field editing ---------- */
-const pdfOverlayRef = ref<HTMLElement | null>(null)
-const pdfLineTop = ref(0)
-const pdfPointerActive = ref(false)
-const pdfEscaped = ref(false)
-const pdfLineShow = computed(() => pdfPointerActive.value && !pdfEscaped.value)
-const imgWrapRef = ref<HTMLElement | null>(null)
-const imgPointer = ref<{ xPct: number; yPct: number } | null>(null)
-const imgEscaped = ref(false)
+/* ---------- the document being validated, page by page ---------- */
+/**
+ * One image URL per page of the scan, so it can be laid out beside the form page
+ * for page. The watcher rendered these at ingest; each URL is served by
+ * `GET /api/validation/[id]/page/[n]`.
+ */
+const docPages = ref<string[]>([])
+/** The page both panels are showing. They never show different pages. */
+const currentPage = ref(0)
 
-/* mirrored pointer: right-panel hover/edit position, reflected onto the left panel */
-const rightPointerPct = ref<{ xPct: number; yPct: number } | null>(null)
-const rightPointerLocked = ref(false)
-
-let timer: ReturnType<typeof setInterval> | null = null
-let rowFlashTimer: ReturnType<typeof setTimeout> | null = null
-
-const revealedPages = computed(() => PAGES.slice(0, revealCount.value))
 const scanShow = computed(() => loaded.value)
-const ocrShow = computed(() => revealCount.value > 0)
-
-function setMode(m: 'LONG' | 'BASE') {
-  mode.value = m
-}
-
-function toggleNgram() {
-  ngramOn.value = !ngramOn.value
-}
+/**
+ * How many pages the pager walks through.
+ *
+ * The form's length normally, but a document with more pages than the form still
+ * gets all of its pages looked at rather than being silently truncated.
+ */
+const pageCount = computed(() => Math.max(formPages.value.length, docPages.value.length))
+/** The scan for the page on screen, if the document has one that far in. */
+const currentScan = computed(() => docPages.value[currentPage.value] ?? null)
+/**
+ * The page banner. Both panels show the same one so the two sides always agree
+ * on which page is open, including before any document has been fetched.
+ */
+const pageLabel = computed(() => `PAGE ${pageCount.value ? currentPage.value + 1 : 0} / ${pageCount.value}`)
+/** True once the form is on screen, which is as soon as the template loads. */
+const ocrShow = computed(() => formPages.value.length > 0)
 
 function setStatus(cls: string, txt: string) {
   statusClass.value = cls
@@ -199,183 +109,288 @@ function showToast(msg: string) {
   }, 1600)
 }
 
-function triggerFilePicker() {
-  fileInputRef.value?.click()
+/* ---------- the master form ---------- */
+
+/**
+ * Renders a form the server has filled in, and remembers which slots it filled.
+ * Corrections already typed by hand are re-applied afterwards, so a model answer
+ * arriving mid-edit adds to the form rather than overwriting the user.
+ */
+async function renderForm(result: OcrResponse) {
+  const corrections = editedKeys.value.size ? readFormValues(editedKeys.value) : null
+
+  formPages.value = result.pages
+  if (currentPage.value >= pageCount.value) currentPage.value = 0
+
+  await nextTick()
+  if (corrections) writeFormValues(corrections)
+  validateForm()
 }
 
-function handleFile(file: File) {
-  const name = file.name.toLowerCase()
-  const isPdf = file.type === 'application/pdf' || name.endsWith('.pdf')
-  const isImage = file.type.startsWith('image/') || /\.(jpe?g|png)$/.test(name)
-  if (!isPdf && !isImage) {
-    showToast('Please upload a PDF, JPG, or PNG file')
-    return
+/**
+ * Loads the blank master form. The panel shows it before any document exists,
+ * so the form is always there to be filled in by hand, whether or not a
+ * document was ever read into it.
+ */
+async function loadBlankForm() {
+  try {
+    await renderForm(await $fetch<OcrResponse>('/api/form'))
   }
-  if (timer) {
-    clearInterval(timer)
-    timer = null
+  catch (error: unknown) {
+    setStatus('', `FAILED · could not load the form template · ${readErrorMessage(error)}`)
   }
-  if (docUrl.value) URL.revokeObjectURL(docUrl.value)
-  docUrl.value = URL.createObjectURL(file)
-  docKind.value = isPdf ? 'pdf' : 'image'
-  fileName.value = file.name
-  imgPointer.value = null
-  imgEscaped.value = false
-  pdfPointerActive.value = false
-  pdfEscaped.value = false
-
-  loaded.value = true
-  running.value = false
-  inputBadgeClass.value = 'badge loaded'
-  inputBadgeText.value = 'LOADED'
-  pageCount.value = PAGES.length
-
-  // OCR output is mocked (no live backend) — reveal it immediately, fully.
-  revealCount.value = PAGES.length
-  progressWidth.value = '100%'
-  outBadgeClass.value = 'badge done'
-  outBadgeText.value = 'DONE'
-  hintShow.value = true
-  charCount.value = fullText.replace(/\s/g, '').length
-  setStatus('done', `COMPLETE · ${fileName.value} · 3 pages · 52 fields · 96.8% mean · 2.31s`)
 }
 
-function onFileInputChange(e: Event) {
-  const input = e.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) handleFile(file)
-  input.value = ''
+/* ---------- the validation queue ---------- */
+
+/** One document from the queue: an OcrResponse plus where it came from. */
+interface ValidationDocument extends OcrResponse {
+  id: number
+  filename: string
+  pageUrls: string[]
 }
 
-function onDragEnter(e: DragEvent) {
-  e.preventDefault()
-  dragActive.value = true
+async function refreshQueueStats() {
+  queueStats.value = await $fetch<Record<string, number>>('/api/validation/stats').catch(() => null)
 }
 
-function onDragLeave(e: DragEvent) {
-  e.preventDefault()
-  dragActive.value = false
-}
-
-function onFileDrop(e: DragEvent) {
-  e.preventDefault()
-  dragActive.value = false
-  const file = e.dataTransfer?.files?.[0]
-  if (file) handleFile(file)
-}
-
-function startOcr() {
-  if (!loaded.value) {
-    showToast('Upload a document first')
-    return
-  }
-  if (running.value) return
-  running.value = true
-  revealCount.value = 0
-  hintShow.value = false
-  outBadgeClass.value = 'badge busy'
-  outBadgeText.value = 'RUNNING'
-  progressWidth.value = '0%'
-
-  const step = () => {
-    if (revealCount.value >= PAGES.length) {
-      if (timer) clearInterval(timer)
-      running.value = false
-      outBadgeClass.value = 'badge done'
-      outBadgeText.value = 'DONE'
-      hintShow.value = true
-      charCount.value = fullText.replace(/\s/g, '').length
-      setStatus('done', 'COMPLETE · 3 pages · 52 fields · 96.8% mean · 2.31s')
+/**
+ * Takes the next document waiting to be checked and puts it on screen.
+ *
+ * The pages and the scan go through the same refs a dropped file uses, so the
+ * form rendering, the pager and the crosshair need no queue-specific handling.
+ */
+async function getPdf() {
+  if (queueBusy.value) return
+  queueBusy.value = true
+  try {
+    const doc = await $fetch<ValidationDocument | null>('/api/validation/next')
+    if (!doc) {
+      showToast('Nothing waiting to be validated')
+      void refreshQueueStats()
       return
     }
-    setStatus('busy', `RECOGNIZING · page ${revealCount.value + 1}/3`)
-    revealCount.value++
-    progressWidth.value = `${(revealCount.value / PAGES.length) * 100}%`
-    nextTick(() => {
-      if (ocrRef.value) ocrRef.value.scrollTop = ocrRef.value.scrollHeight
-    })
+
+    // Must come before renderForm: it re-applies edited slots after swapping
+    // pages, so edits left over from the last document would leak into this one.
+    editedKeys.value = new Set()
+
+    queueId.value = doc.id
+    fileName.value = doc.filename
+    docPages.value = doc.pageUrls
+    currentPage.value = 0
+    scan.reset()
+    form.reset()
+    loaded.value = true
+    inputBadgeClass.value = 'badge loaded'
+    inputBadgeText.value = 'LOADED'
+    outBadgeClass.value = 'badge done'
+    outBadgeText.value = 'VALIDATE'
+
+    await renderForm(doc)
+    setStatus('done', `#${doc.id} · ${doc.filename} · ${doc.filledFields}/${doc.totalFields} fields read`)
+    if (ocrRef.value) ocrRef.value.scrollTop = 0
+    void refreshQueueStats()
   }
-  step()
-  timer = setInterval(step, 700)
+  catch (error: unknown) {
+    showToast(`Could not get a document: ${readErrorMessage(error)}`)
+  }
+  finally {
+    queueBusy.value = false
+  }
 }
 
-function stopOcr() {
-  if (!running.value) return
-  if (timer) clearInterval(timer)
-  running.value = false
-  outBadgeClass.value = 'badge waiting'
-  outBadgeText.value = 'STOPPED'
-  setStatus('', 'STOPPED by user')
+/** Accepts the form as corrected, then moves straight on to the next one. */
+async function approveDocument() {
+  const id = queueId.value
+  if (id === null || queueBusy.value) return
+  queueBusy.value = true
+  try {
+    await $fetch(`/api/validation/${id}/approve`, {
+      method: 'POST',
+      body: { values: readFormValues() },
+    })
+    showToast(`Approved #${id}`)
+  }
+  catch (error: unknown) {
+    showToast(`Could not approve: ${readErrorMessage(error)}`)
+    return
+  }
+  finally {
+    queueBusy.value = false
+  }
+
+  // Cleared before the next document is asked for, not after: the scan and the
+  // values that were just approved should leave the screen with the document
+  // they belong to. If nothing is waiting, what remains is the blank form rather
+  // than an approved one that looks like it still needs checking.
+  await clearWorkspace()
+  setStatus('', `READY · approved #${id}`)
+  await getPdf()
 }
 
-function resetAll() {
-  if (timer) clearInterval(timer)
-  running.value = false
-  loaded.value = false
-  revealCount.value = 0
-  hintShow.value = false
-  inputBadgeClass.value = 'badge empty'
-  inputBadgeText.value = 'EMPTY'
+/** Puts the blank form back, discarding whatever was being edited. */
+async function clearOutput() {
+  editedKeys.value = new Set()
   outBadgeClass.value = 'badge waiting'
   outBadgeText.value = 'WAITING'
-  progressWidth.value = '0%'
-  pageCount.value = 0
-  charCount.value = 0
-  if (docUrl.value) {
-    URL.revokeObjectURL(docUrl.value)
-    docUrl.value = null
+  await loadBlankForm()
+}
+
+/** Pulls a readable message out of whatever `$fetch` rejected with. */
+function readErrorMessage(error: unknown): string {
+  if (typeof error === 'object' && error !== null) {
+    const candidate = error as {
+      statusMessage?: string
+      message?: string
+      data?: { statusMessage?: string; message?: string }
+    }
+    return (
+      candidate.data?.statusMessage
+      ?? candidate.statusMessage
+      ?? candidate.data?.message
+      ?? candidate.message
+      ?? 'The request failed.'
+    )
   }
-  docKind.value = null
+  return 'The request failed.'
+}
+
+/** Puts the console back to its empty state, without approving anything. */
+/**
+ * Empties both panels: no scan, no values, no document.
+ *
+ * Used when a document leaves the console, whichever way it goes. Approving one
+ * has to clear it for the same reason abandoning one does — what is on screen
+ * afterwards is either the next document or nothing, and the previous
+ * annotator's answers must not be sitting there looking like either.
+ */
+async function clearWorkspace() {
+  loaded.value = false
+  docPages.value = []
+  currentPage.value = 0
+  scan.reset()
+  form.reset()
+  queueId.value = null
   fileName.value = ''
-  pdfPointerActive.value = false
-  pdfEscaped.value = false
-  imgPointer.value = null
-  imgEscaped.value = false
-  setStatus('', 'READY · model loaded')
+  inputBadgeClass.value = 'badge empty'
+  inputBadgeText.value = 'EMPTY'
+  await clearOutput()
 }
 
-function domToText(): string {
-  if (!ocrBodyRef.value) return fullText
-  const out: string[] = []
-  ocrBodyRef.value.querySelectorAll('.pageblock').forEach((pb) => {
-    const mk = pb.querySelector('.marker')
-    if (mk) out.push(`── ${mk.textContent} ──`)
-    const ti = pb.querySelector('.doctitle')
-    if (ti) out.push(ti.textContent || '')
-    const sb = pb.querySelector('.docsub')
-    if (sb) out.push(sb.textContent || '')
-    const bl = pb.querySelector('.blank')
-    if (bl) out.push(bl.textContent || '')
-    pb.querySelectorAll('table tr').forEach((tr) => {
-      const cells = rowToCells(tr)
-      if (cells.length) out.push(cells.join('  |  '))
-    })
-    const nt = pb.querySelector('.notes')
-    if (nt) out.push((nt as HTMLElement).innerText)
+async function resetAll() {
+  await clearWorkspace()
+  setStatus('', 'READY · nothing being validated')
+}
+
+/* ---------- reading the edited form back out ---------- */
+
+/** The slot element for a key, on whichever page carries it. */
+function slotElements(key: string): HTMLElement[] {
+  const root = ocrBodyRef.value
+  if (!root) return []
+  return Array.from(root.querySelectorAll<HTMLElement>(`[data-field="${CSS.escape(key)}"]`))
+}
+
+/** Reads one slot, whether it is an editable cell or a dropdown. */
+function readSlot(el: HTMLElement): string {
+  const select = el.querySelector('select')
+  const raw = select ? select.value : (el.textContent ?? '')
+  return raw.replace(/\u00a0/g, ' ').trim()
+}
+
+/**
+ * The form's current values, corrections included. Passing `keys` reads just
+ * those slots. A key the template repeats across pages (the form number) is
+ * reported once, from whichever copy of it holds a value.
+ */
+function readFormValues(keys?: Set<string>): Record<string, string> {
+  const root = ocrBodyRef.value
+  const values: Record<string, string> = {}
+  if (!root) return values
+
+  root.querySelectorAll<HTMLElement>('[data-field]').forEach((el) => {
+    const key = el.dataset.field
+    if (!key || (keys && !keys.has(key))) return
+    const value = readSlot(el)
+    if (value || !(key in values)) values[key] = value
   })
-  return out.join('\n')
+
+  return values
 }
 
-function rowToCells(tr: Element): string[] {
-  return [...tr.children]
-    .map((td) => {
-      const sel = td.querySelector('select')
-      if (sel) return (sel as HTMLSelectElement).value
-      return (td.textContent || '').trim()
-    })
-    .filter(Boolean)
-}
-
-async function copyOutput() {
-  let txt = fullText
-  const showingOcr = ocrShow.value
-  if (showingOcr) txt = domToText()
-  try {
-    await navigator.clipboard.writeText(txt)
-  } catch {
-    // clipboard unavailable — ignore
+/** Writes values back into their slots, leaving every other slot untouched. */
+function writeFormValues(values: Record<string, string>): void {
+  for (const [key, value] of Object.entries(values)) {
+    for (const el of slotElements(key)) {
+      const select = el.querySelector('select')
+      if (select) select.value = value
+      else el.textContent = value
+    }
   }
-  showToast(showingOcr ? 'Copied OCR text (with edits)' : 'Load a document and run OCR first')
+}
+
+/**
+ * Copies an edited value into the slot's other copies.
+ *
+ * The form number is printed on both filled pages, so the same key has a cell on
+ * each. Without this, correcting it on the page in view would silently leave the
+ * other page disagreeing — and with one page on screen at a time, nothing would
+ * show that it had. The edited element itself is skipped, so the caret stays put.
+ */
+function mirrorSlot(source: HTMLElement, key: string): void {
+  for (const el of slotElements(key)) {
+    if (el === source) continue
+    const value = readSlot(source)
+    const select = el.querySelector('select')
+    if (select) select.value = value
+    else if (el.textContent !== value) el.textContent = value
+  }
+}
+
+/* ---------- marriage-date validation ---------- */
+
+/** DD/MM/YYYY or DD-MM-YYYY with sane day/month ranges. */
+function isDate(value: string): boolean {
+  const m = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value.trim())
+  return !!m && +m[1] >= 1 && +m[1] <= 31 && +m[2] >= 1 && +m[2] <= 12
+}
+
+/**
+ * Flags each person's Date of Marriage cell red when it disagrees with their
+ * Marital Status: married but blank, unmarried but filled, or a value that is
+ * not a DD/MM/YYYY date. Runs over the hidden pages too, so a flag survives
+ * paging away and back.
+ */
+function validateMarriage(): void {
+  for (const p of ['p1', 'p2', 'p3', 'p4', 'p5']) {
+    const cells = slotElements(`${p}.marriage_date`)
+    if (!cells.length) continue
+    const status = slotElements(`${p}.marital_status`)[0]
+    const statusVal = status ? readSlot(status) : ''
+    const date = readSlot(cells[0])
+    const bad
+      = (statusVal === 'Married' && date === '')
+      || (statusVal === 'Unmarried' && date !== '')
+      || (date !== '' && !isDate(date))
+    for (const el of cells) el.classList.toggle('invalid', bad)
+  }
+}
+
+function validateEmail(): void {
+  for (const p of ['p1', 'p2', 'p3', 'p4', 'p5']) {
+    const cells = slotElements(`${p}.email`)
+    if (!cells.length) continue
+    const v = (cells[0]!.innerText ?? '').replace(/ /g, ' ').trim()
+    const bad = v !== '' && !/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(v)
+    for (const el of cells) el.classList.toggle('invalid', bad)
+  }
+}
+
+/** Every field rule, run together. Add new validate* calls here. */
+function validateForm(): void {
+  validateMarriage()
+  validateEmail()
 }
 
 function scrollOcrTop() {
@@ -387,133 +402,206 @@ function scrollOcrBottom() {
   ocrRef.value.scrollTo({ top: ocrRef.value.scrollHeight, behavior: 'smooth' })
 }
 
-function fitScan() {
-  scanRef.value?.scrollTo({ top: 0, behavior: 'smooth' })
-}
+/* ---------- zooming and panning a panel ---------- */
 
-/* ---------- cursor-linked field editing ---------- */
-function placeCaretAtEnd(el: HTMLElement) {
-  const range = document.createRange()
-  range.selectNodeContents(el)
-  range.collapse(false)
-  const sel = window.getSelection()
-  sel?.removeAllRanges()
-  sel?.addRange(range)
-}
+/** Fit-to-width. Below this a page would be smaller than the panel showing it. */
+const MIN_ZOOM = 1
 
-function jumpToMatchingField(proportion: number) {
-  if (!ocrShow.value || !ocrBodyRef.value || !ocrRef.value) return
-  const rows = Array.from(ocrBodyRef.value.querySelectorAll('table.ftab tr')) as HTMLElement[]
-  if (!rows.length) return
-  const idx = Math.min(rows.length - 1, Math.max(0, Math.floor(proportion * rows.length)))
-  const row = rows[idx]
-  if (!row) return
-  row.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  row.classList.add('row-flash')
-  if (rowFlashTimer) clearTimeout(rowFlashTimer)
-  rowFlashTimer = setTimeout(() => row.classList.remove('row-flash'), 1200)
-  const target = row.querySelector('[contenteditable="true"], select') as HTMLElement | null
-  if (target) {
-    setTimeout(() => {
-      target.focus()
-      if (target.getAttribute('contenteditable') === 'true') placeCaretAtEnd(target)
-    }, 300)
+/** Multiplier per wheel notch. Small enough that zooming feels continuous. */
+const ZOOM_STEP = 1.12
+
+/** Movement past this counts as a drag rather than a click. */
+const DRAG_SLOP_PX = 4
+
+/**
+ * Ctrl-wheel to zoom, drag to move around, for one scrolling panel.
+ *
+ * Both panels want the same gesture, so it is written once. What differs is
+ * only how the zoom is applied — the scan scales an image, the form scales a
+ * page of markup — and whether a given press should pan at all, which the form
+ * has to refuse over its editable cells or dragging to select text would move
+ * the page instead.
+ *
+ * A bare wheel keeps its usual meaning, scrolling the panel, because that is how
+ * you read down a page. Ctrl-wheel is the gesture the browser would otherwise
+ * spend on zooming the whole console, which is never what is wanted here: it is
+ * the document that needs a closer look, not the toolbar around it.
+ */
+function usePanZoom(
+  panel: Ref<HTMLElement | null>,
+  options: { max: number; canPan?: (target: HTMLElement) => boolean },
+) {
+  /** How much larger than fit-width the content is drawn. */
+  const zoom = ref(MIN_ZOOM)
+
+  /** True while a drag is in progress, so a cursor can say so. */
+  const panning = ref(false)
+
+  /** Where the drag started, and where the panel was scrolled to at the time. */
+  let from: { x: number; y: number; left: number; top: number } | null = null
+
+  /**
+   * Whether the last gesture moved far enough to be a drag.
+   *
+   * A drag necessarily ends in a click, and that click must not also be read as
+   * "act on whatever I released over".
+   */
+  let dragged = false
+
+  function onWheel(e: WheelEvent) {
+    if (!e.ctrlKey) return
+    e.preventDefault()
+
+    const el = panel.value
+    if (!el) return
+
+    const previous = zoom.value
+    const next = Math.min(
+      options.max,
+      Math.max(MIN_ZOOM, previous * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP)),
+    )
+    if (next === previous) return
+
+    // Hold the point under the cursor still, so zooming reads as leaning closer
+    // to the page rather than the page sliding out from under the pointer.
+    const rect = el.getBoundingClientRect()
+    const offsetX = e.clientX - rect.left
+    const offsetY = e.clientY - rect.top
+    const atX = el.scrollLeft + offsetX
+    const atY = el.scrollTop + offsetY
+    const factor = next / previous
+
+    zoom.value = next
+    void nextTick(() => {
+      el.scrollLeft = atX * factor - offsetX
+      el.scrollTop = atY * factor - offsetY
+    })
   }
+
+  function onPointerDown(e: PointerEvent) {
+    const el = panel.value
+    if (e.button !== 0 || !el) return
+    if (options.canPan && !options.canPan(e.target as HTMLElement)) return
+
+    // Stops the browser starting its own drag or selection midway through.
+    e.preventDefault()
+
+    from = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop }
+    dragged = false
+    panning.value = true
+    // Capture, so a drag that leaves the panel keeps working until the button is up.
+    el.setPointerCapture(e.pointerId)
+  }
+
+  function onPointerMove(e: PointerEvent) {
+    const el = panel.value
+    if (!from || !el) return
+
+    const dx = e.clientX - from.x
+    const dy = e.clientY - from.y
+    if (!dragged && Math.hypot(dx, dy) > DRAG_SLOP_PX) dragged = true
+
+    // The page follows the hand: drag left and the content goes left.
+    el.scrollLeft = from.left - dx
+    el.scrollTop = from.top - dy
+  }
+
+  function onPointerUp(e: PointerEvent) {
+    if (!from) return
+    panel.value?.releasePointerCapture(e.pointerId)
+    from = null
+    panning.value = false
+  }
+
+  /** Whether the gesture just finished was a drag. Reading it clears it. */
+  function tookDrag(): boolean {
+    const was = dragged
+    dragged = false
+    return was
+  }
+
+  /** Back to fit-width, at the top of the panel. */
+  function reset() {
+    zoom.value = MIN_ZOOM
+    panel.value?.scrollTo({ top: 0, left: 0, behavior: 'smooth' })
+  }
+
+  return { zoom, panning, onWheel, onPointerDown, onPointerMove, onPointerUp, tookDrag, reset }
 }
 
-/* image uploads: real DOM element, pixel-accurate mouse tracking */
-function onImagePointerMove(e: MouseEvent) {
-  const el = imgWrapRef.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  const xPct = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
-  const yPct = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100))
-  imgPointer.value = { xPct, yPct }
+/** The scan. Far enough in to read a cramped hand in a box meant for four characters. */
+const scan = usePanZoom(scanRef, { max: 6 })
+const scanZoom = scan.zoom
+const scanPanning = scan.panning
+
+/**
+ * The form. Panning is refused over anything editable, so dragging inside a cell
+ * still selects its text and clicking still puts the caret where you aimed —
+ * only the space around the cells moves the page.
+ */
+const form = usePanZoom(ocrRef, {
+  max: 4,
+  canPan: target => !target.closest('[contenteditable="true"], select, input, button'),
+})
+const formZoom = form.zoom
+const formPanning = form.panning
+
+/** Back to fit-to-width, at the top of the page. */
+function fitScan() {
+  scan.reset()
 }
 
-function onImagePointerLeave() {
-  imgPointer.value = null
+/* ---------- the page pair on screen ---------- */
+
+/** Both panels move together, so there is one page number for the two of them. */
+function goToPage(index: number) {
+  currentPage.value = Math.min(pageCount.value - 1, Math.max(0, index))
+  scanRef.value?.scrollTo({ top: 0 })
+  ocrRef.value?.scrollTo({ top: 0 })
 }
 
-function onImageClick(e: MouseEvent) {
-  const el = imgWrapRef.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  const proportion = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height))
-  jumpToMatchingField(proportion)
+function prevPage() {
+  goToPage(currentPage.value - 1)
 }
 
-/* right panel (OCR table) hover/edit position, mirrored as a pointer on the
-   left panel. Hovering tracks the mouse live; focusing an editable field
-   locks the pointer to that field's position until focus moves elsewhere. */
-function onOcrPointerMove(e: MouseEvent) {
-  if (rightPointerLocked.value) return
-  const el = ocrRef.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  const xPct = Math.min(100, Math.max(0, ((e.clientX - rect.left) / rect.width) * 100))
-  const yPct = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100))
-  rightPointerPct.value = { xPct, yPct }
+function nextPage() {
+  goToPage(currentPage.value + 1)
 }
 
-function onOcrPointerLeave() {
-  if (rightPointerLocked.value) return
-  rightPointerPct.value = null
-}
-
-function onOcrFocusIn(e: FocusEvent) {
-  const el = ocrRef.value
+/**
+ * Records which slot was edited so a hand-typed correction is not replaced when
+ * a document's values land after the user has already started fixing the form;
+ * see {@link renderForm}. Fires for dropdowns too, which emit `input` alongside
+ * `change`.
+ */
+function onFormInput(e: Event) {
   const target = e.target as HTMLElement | null
-  if (!el || !target || typeof target.matches !== 'function') return
-  if (!target.matches('[contenteditable="true"], select')) return
-  const panelRect = el.getBoundingClientRect()
-  const fieldRect = target.getBoundingClientRect()
-  const xPct = Math.min(100, Math.max(0, ((fieldRect.left + fieldRect.width / 2 - panelRect.left) / panelRect.width) * 100))
-  const yPct = Math.min(100, Math.max(0, ((fieldRect.top + fieldRect.height / 2 - panelRect.top) / panelRect.height) * 100))
-  rightPointerPct.value = { xPct, yPct }
-  rightPointerLocked.value = true
-}
-
-function onOcrFocusOut() {
-  rightPointerLocked.value = false
-}
-
-/* PDF uploads: native iframe viewer swallows events, so a transparent overlay
-   is used just to show a tracking line (no reliable click-to-field mapping).
-   Pressing Escape while the cursor is away from the reader dismisses the line
-   for good (until a new document is loaded) — hovering it again will not
-   bring it back. */
-function onPdfOverlayEnter() {
-  pdfPointerActive.value = true
-}
-
-function onPdfOverlayMove(e: MouseEvent) {
-  const el = pdfOverlayRef.value
-  if (!el) return
-  const rect = el.getBoundingClientRect()
-  pdfLineTop.value = Math.min(100, Math.max(0, ((e.clientY - rect.top) / rect.height) * 100))
-  pdfPointerActive.value = true
-}
-
-function onPdfOverlayLeave() {
-  pdfPointerActive.value = false
-}
-
-function onWindowKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  if (!pdfPointerActive.value) pdfEscaped.value = true
-  if (!imgPointer.value) imgEscaped.value = true
+  const slot = target?.closest?.('[data-field]') as HTMLElement | null
+  const key = slot?.dataset.field
+  if (slot && key) {
+    editedKeys.value.add(key)
+    mirrorSlot(slot, key)
+  }
+  validateForm()
 }
 
 onMounted(() => {
-  window.addEventListener('keydown', onWindowKeydown)
+  // Attached by hand rather than with `@wheel`, and explicitly non-passive.
+  // A passive wheel listener cannot call `preventDefault`, and without that the
+  // browser keeps Ctrl-wheel for zooming the whole console — the handler would
+  // run, the page would scale, and the scan would never zoom at all.
+  scanRef.value?.addEventListener('wheel', scan.onWheel, { passive: false })
+  ocrRef.value?.addEventListener('wheel', form.onWheel, { passive: false })
+
+  void refreshQueueStats()
+  // The form is the panel's content, not a result: it is on screen before any
+  // document exists and stays there between documents.
+  void loadBlankForm()
 })
 
 onBeforeUnmount(() => {
-  if (timer) clearInterval(timer)
-  if (rowFlashTimer) clearTimeout(rowFlashTimer)
-  if (docUrl.value) URL.revokeObjectURL(docUrl.value)
-  window.removeEventListener('keydown', onWindowKeydown)
+  scanRef.value?.removeEventListener('wheel', scan.onWheel)
+  ocrRef.value?.removeEventListener('wheel', form.onWheel)
 })
 </script>
 
@@ -525,24 +613,32 @@ onBeforeUnmount(() => {
         <div class="g">📄</div>
         <span class="nm">Unlimited<span class="o">-OCR</span></span>
       </div>
-      <div class="header-sep" />
-      <div class="seg" role="tablist" aria-label="Mode">
-        <button :class="{ on: mode === 'LONG' }" role="tab" :aria-selected="mode === 'LONG'" @click="setMode('LONG')">
-          Long
-        </button>
-        <button :class="{ on: mode === 'BASE' }" role="tab" :aria-selected="mode === 'BASE'" @click="setMode('BASE')">
-          Base
-        </button>
-      </div>
-      <div class="header-sep" />
-      <div class="ngram">
-        <span class="lab">NGRAM</span>
-        <button class="sw" :aria-pressed="ngramOn" aria-label="Toggle n-gram" @click="toggleNgram" />
-      </div>
 
       <div class="grow" />
 
       <div class="actions">
+        <button class="btn get" :disabled="queueBusy" title="Take the next document waiting to be validated" @click="getPdf">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 3v5h5" />
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+          </svg>
+          GET PDF
+          <span v-if="queueStats?.under_validation" class="qcount">{{ queueStats.under_validation }}</span>
+        </button>
+        <button class="btn approve" :disabled="queueId === null || queueBusy" title="Accept this form and move on to the next" @click="approveDocument">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+          APPROVE
+        </button>
+        <a class="btn" href="/api/validation/export?status=approved" title="One combined sheet of every approved form">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h7l2 3h7v13H4z" />
+            <path d="M12 11v5M9.5 13.5 12 11l2.5 2.5" />
+          </svg>
+          EXPORT ALL
+        </a>
+        <div class="header-sep" />
         <button class="btn" @click="resetAll">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M4 4v6h6" />
@@ -551,17 +647,6 @@ onBeforeUnmount(() => {
           </svg>
           RESET
         </button>
-        <button class="btn" @click="copyOutput">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="12" height="12" rx="2" />
-            <path d="M5 15V5a2 2 0 0 1 2-2h8" />
-          </svg>
-          COPY
-        </button>
-        <button class="btn stop" @click="stopOcr">
-          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="1.5" /></svg>
-          STOP
-        </button>
       </div>
     </div>
 
@@ -569,13 +654,43 @@ onBeforeUnmount(() => {
     <div class="status">
       <span class="st"><span class="d" :class="statusClass" /><span>{{ statusText }}</span></span>
       <div class="right">
-        <span>MODEL <b>baidu/Unlimited-OCR</b></span>
-        <span>MODE <b>{{ mode }}</b></span>
-        <span>PAGES <b>{{ pageCount }}</b></span>
-        <span><b>{{ charCount }}</b> chars</span>
+        <span>PAGE <b>{{ pageCount ? currentPage + 1 : 0 }}</b> / <b>{{ pageCount }}</b></span>
+        <span v-if="queueStats">QUEUE <b>{{ queueStats.under_validation ?? 0 }}</b> · <b>{{ queueStats.approved ?? 0 }}</b> done<template v-if="queueStats.failed"> · <b>{{ queueStats.failed }}</b> failed</template></span>
       </div>
     </div>
-    <div class="progress"><i :style="{ width: progressWidth }" /></div>
+
+    <!-- PAGER: the scan and the form are always turned together -->
+    <div v-if="pageCount > 1" class="pager">
+      <span class="pagerhint">scan and form move together</span>
+      <button class="pagebtn" :disabled="currentPage === 0" aria-label="Previous page" @click="prevPage">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 5l-7 7 7 7" />
+        </svg>
+      </button>
+      <div class="pagenums">
+        <button
+          v-for="n in pageCount"
+          :key="n"
+          class="pagenum"
+          :class="{ on: currentPage === n - 1, missing: n - 1 >= docPages.length && docPages.length > 0 }"
+          :aria-current="currentPage === n - 1"
+          :title="n - 1 >= docPages.length && docPages.length > 0 ? `Page ${n}: no page this far into the document` : `Page ${n}`"
+          @click="goToPage(n - 1)"
+        >
+          {{ n }}
+        </button>
+      </div>
+      <button
+        class="pagebtn"
+        :disabled="currentPage >= pageCount - 1"
+        aria-label="Next page"
+        @click="nextPage"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+    </div>
 
     <!-- WORKSPACE -->
     <div class="work">
@@ -585,12 +700,6 @@ onBeforeUnmount(() => {
           <span class="t">INPUT · ORIGINAL</span>
           <span class="badge" :class="inputBadgeClass.replace('badge ', '')">{{ inputBadgeText }}</span>
           <div class="icons">
-            <button title="Upload" @click="triggerFilePicker">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 15V4M12 4l-4 4M12 4l4 4" />
-                <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
-              </svg>
-            </button>
             <button title="Fit to width" @click="fitScan">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
                 <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" />
@@ -599,90 +708,63 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <input
-          ref="fileInputRef"
-          type="file"
-          accept="application/pdf,.pdf,image/jpeg,image/png,.jpg,.jpeg,.png"
-          class="file-input-hidden"
-          @change="onFileInputChange"
-        >
+        <!-- Nothing is being validated yet. Documents arrive through the queue,
+             so there is nothing to click here — GET PDF is the way in. -->
+        <div v-if="!loaded" class="idle">
+          <div class="marker cornermarker">{{ pageLabel }}</div>
+          <div class="big">📄</div>
+          <div class="h">Nothing being validated</div>
+          <div class="s">Press GET PDF to take the next document from the queue.</div>
+        </div>
 
         <div
-          v-if="!loaded"
-          class="drop"
-          :class="{ dragover: dragActive }"
-          @click="triggerFilePicker"
-          @dragenter="onDragEnter"
-          @dragover.prevent
-          @dragleave="onDragLeave"
-          @drop="onFileDrop"
+          ref="scanRef"
+          class="viewer scan"
+          :class="{ show: scanShow }"
+          :aria-label="`Scanned document, page ${currentPage + 1}`"
+          @pointerdown="scan.onPointerDown"
+          @pointermove="scan.onPointerMove"
+          @pointerup="scan.onPointerUp"
+          @pointercancel="scan.onPointerUp"
         >
-          <div class="big">📄</div>
-          <div class="h">Drop your document here</div>
-          <div class="s">or click anywhere to browse</div>
-          <div class="fmts">
-            <span class="fmt">PDF</span><span class="fmt">JPG</span><span class="fmt">PNG</span>
-          </div>
-        </div>
-
-        <div ref="scanRef" class="viewer scan" :class="{ show: scanShow }" aria-label="Original uploaded document">
-          <template v-if="docKind === 'pdf' && docUrl">
-            <iframe :src="docUrl" class="pdf-frame" title="Uploaded PDF preview" />
-            <div
-              ref="pdfOverlayRef"
-              class="pdf-pointer-overlay"
-              :class="{ escaped: pdfEscaped }"
-              title="Move to track position · press Esc while outside to hide the line for good"
-              @mouseenter="onPdfOverlayEnter"
-              @mousemove="onPdfOverlayMove"
-              @mouseleave="onPdfOverlayLeave"
-            >
-              <div v-if="pdfLineShow" class="pdf-pointer-line" :style="{ top: pdfLineTop + '%' }" />
+          <template v-if="!docPages.length">
+            <div class="marker pendingmarker">{{ pageLabel }}</div>
+            <div class="scan-pending">
+              The scan could not be rendered. The form beside it is still yours to fill in.
             </div>
-            <div v-if="rightPointerPct" class="edit-link-line" :style="{ top: rightPointerPct.yPct + '%' }" />
-            <div
-              v-if="rightPointerPct"
-              class="edit-link-dot"
-              :style="{ top: rightPointerPct.yPct + '%', left: rightPointerPct.xPct + '%' }"
-            />
           </template>
-          <div
-            v-else-if="docKind === 'image' && docUrl"
-            ref="imgWrapRef"
-            class="scan-image-wrap"
-            :class="{ escaped: imgEscaped }"
-            title="Click a spot to jump to the matching field · press Esc while outside to hide the crosshair for good"
-            @mousemove="onImagePointerMove"
-            @mouseleave="onImagePointerLeave"
-            @click="onImageClick"
-          >
-            <img :src="docUrl" class="scan-image" alt="Uploaded document page" draggable="false">
-            <template v-if="imgPointer && !imgEscaped">
-              <div class="scan-crosshair-h" :style="{ top: imgPointer.yPct + '%' }" />
-              <div class="scan-crosshair-v" :style="{ left: imgPointer.xPct + '%' }" />
-              <div class="scan-crosshair-dot" :style="{ top: imgPointer.yPct + '%', left: imgPointer.xPct + '%' }" />
-            </template>
-            <template v-if="rightPointerPct">
-              <div class="edit-link-h" :style="{ top: rightPointerPct.yPct + '%' }" />
-              <div class="edit-link-v" :style="{ left: rightPointerPct.xPct + '%' }" />
-              <div
-                class="edit-link-dot"
-                :style="{ top: rightPointerPct.yPct + '%', left: rightPointerPct.xPct + '%' }"
-              />
-            </template>
-          </div>
-        </div>
 
-        <div class="promptbar">
-          <span class="lab">PROMPT</span>
-          <input value="document parsing." aria-label="Prompt">
+          <template v-else-if="!currentScan">
+            <div class="marker pendingmarker">{{ pageLabel }}</div>
+            <div class="scan-pending">
+              This document has {{ docPages.length }} page{{ docPages.length === 1 ? '' : 's' }} —
+              there is no page {{ currentPage + 1 }} to show beside this one.
+            </div>
+          </template>
+
+          <!-- the one page paired with the form on the right -->
+          <div
+            v-else-if="currentScan"
+            class="scanpage"
+            :class="{ pannable: scanZoom > MIN_ZOOM, panning: scanPanning }"
+            title="Ctrl+scroll to zoom · drag to move around"
+          >
+            <div class="marker scanmarker">{{ pageLabel }}</div>
+            <img
+              :src="currentScan"
+              class="scan-image"
+              :style="{ width: `${scanZoom * 100}%` }"
+              :alt="`Uploaded document, page ${currentPage + 1}`"
+              draggable="false"
+            >
+          </div>
         </div>
       </div>
 
       <!-- RIGHT / OCR OUTPUT (annotatable) -->
       <div class="col">
         <div class="colhead">
-          <span class="t">OCR OUTPUT · ANNOTATABLE</span>
+          <span class="t">FORM · ANNOTATABLE</span>
           <span class="badge" :class="outBadgeClass.replace('badge ', '')">{{ outBadgeText }}</span>
           <div class="icons">
             <button title="Scroll to top" @click="scrollOcrTop">
@@ -701,66 +783,46 @@ onBeforeUnmount(() => {
         <div class="output-wrap">
           <div class="empty-state" :class="{ hide: ocrShow }">
             <div class="big">▦</div>
-            <div class="h">OCR output will appear here</div>
-            <div class="s">Upload a document to see OCR output</div>
+            <div class="h">Loading the form…</div>
+            <div class="s">The blank form appears here, ready to fill in</div>
           </div>
           <div
             ref="ocrRef"
             class="viewer ocr"
-            :class="{ show: ocrShow }"
-            @mousemove="onOcrPointerMove"
-            @mouseleave="onOcrPointerLeave"
-            @focusin="onOcrFocusIn"
-            @focusout="onOcrFocusOut"
+            :class="{ show: ocrShow, panning: formPanning }"
+            @pointerdown="form.onPointerDown"
+            @pointermove="form.onPointerMove"
+            @pointerup="form.onPointerUp"
+            @pointercancel="form.onPointerUp"
           >
-            <div class="hint" :class="{ show: hintShow }">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
-              </svg>
-              EDITABLE — click any field to correct the recognized text
-            </div>
-            <div ref="ocrBodyRef" class="ocr-body">
-              <div v-for="(page, pi) in revealedPages" :key="pi" class="pageblock">
+
+            <div ref="ocrBodyRef" class="ocr-body" :style="{ zoom: formZoom }" @input="onFormInput" @change="onFormInput">
+
+
+
+  
+              <!-- the master form: every slot is edited in place -->
+              <!--
+                Every page is rendered and the ones off-view are hidden with
+                v-show rather than dropped: an edit on page 1 has to survive a
+                trip to page 3, and COPY and CSV read the whole form out of the
+                DOM, not just the page on screen.
+              -->
+              <div
+                v-for="(page, pi) in formPages"
+                v-show="pi === currentPage"
+                :key="pi"
+                class="pageblock"
+              >
                 <div class="marker">{{ page.marker }}</div>
                 <template v-if="page.blank">
-                  <div class="blank">(no text detected)</div>
+                  <div class="blank">(this page of the form is intentionally empty)</div>
                 </template>
                 <template v-else>
                   <div v-if="page.title" class="doctitle">{{ page.title }}</div>
                   <div v-if="page.sub" class="docsub">{{ page.sub }}</div>
-                  <table v-if="page.table" class="ftab">
-                    <colgroup>
-                      <col style="width: 22px" /><col style="width: 30%" /><col /><col /><col /><col /><col />
-                    </colgroup>
-                    <tbody>
-                      <tr v-for="(row, ri) in page.table" :key="ri">
-                        <td
-                          v-for="(cell, ci) in row"
-                          :key="ci"
-                          :class="cell.k"
-                          :colspan="cell.cs || undefined"
-                          :contenteditable="cell.k === 'data' || cell.k === 'opt'"
-                          spellcheck="false"
-                        >
-                          <select v-if="cell.k === 'select'" v-model="cell.value" class="cellselect">
-                            <option value="" disabled>Select…</option>
-                            <option v-for="opt in cell.options" :key="opt" :value="opt">{{ opt }}</option>
-                          </select>
-                          <template v-else>{{ cell.t }}</template>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <div v-if="page.notes" class="notes">
-                    <div class="nt">{{ page.notes.title }}</div>
-                    <div class="sb">{{ page.notes.sub }}</div>
-                    <div class="grid">
-                      <div v-for="(it, ii) in page.notes.items" :key="ii">
-                        <span class="notelbl">{{ it.label }}</span>
-                        <span class="notedata" contenteditable="true" spellcheck="false">{{ it.value }}</span>
-                      </div>
-                    </div>
-                  </div>
+                  <!-- eslint-disable-next-line vue/no-v-html -->
+                  <div class="docbody" v-html="page.html" />
                 </template>
               </div>
             </div>
@@ -863,69 +925,6 @@ onBeforeUnmount(() => {
   background: var(--line-2);
   flex: none;
 }
-.seg {
-  display: inline-flex;
-  gap: 2px;
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  background: var(--bg);
-  padding: 3px;
-  font-family: var(--mono);
-  font-size: 12px;
-}
-.seg button {
-  background: transparent;
-  color: var(--muted);
-  border: 0;
-  border-radius: 5px;
-  padding: 5px 14px;
-  letter-spacing: 0.02em;
-}
-.seg button.on {
-  background: var(--card);
-  color: var(--ink);
-  font-weight: 500;
-}
-.ngram {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-}
-.ngram .lab {
-  font-family: var(--mono);
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  color: var(--dim);
-}
-.sw {
-  width: 38px;
-  height: 20px;
-  border-radius: 999px;
-  border: 0;
-  padding: 0;
-  background: var(--teal);
-  position: relative;
-  transition: background 0.18s;
-}
-.sw::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 20px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #06110e;
-  transition: left 0.18s;
-}
-.sw[aria-pressed='false'] {
-  background: var(--line-2);
-}
-.sw[aria-pressed='false']::after {
-  left: 2px;
-  background: var(--dim);
-}
-
 .grow {
   flex: 1 1 auto;
 }
@@ -970,14 +969,40 @@ onBeforeUnmount(() => {
   filter: brightness(1.08);
   color: #001b15;
 }
-.btn.stop {
-  background: var(--red);
-  color: #fff;
-  border-color: transparent;
+.btn.get {
+  border-color: var(--line-2);
 }
-.btn.stop:hover {
-  filter: brightness(1.08);
-  color: #fff;
+.btn.get:hover:not(:disabled) {
+  border-color: var(--teal-dim);
+}
+.qcount {
+  margin-left: 2px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--teal);
+  color: #06110e;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+.btn.approve {
+  border-color: var(--teal-dim);
+  color: var(--teal);
+}
+.btn.approve:hover:not(:disabled) {
+  background: rgba(0, 212, 170, 0.12);
+}
+/* EXPORT ALL is an anchor, not a button: it must still sit on the same line. */
+a.btn {
+  text-decoration: none;
+}
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.btn:disabled:hover {
+  color: var(--muted);
+  border-color: var(--line-2);
+  filter: none;
 }
 
 /* ---------- status strip ---------- */
@@ -1007,19 +1032,9 @@ onBeforeUnmount(() => {
   background: var(--dim);
   box-shadow: none;
 }
-.status .st .d.busy {
-  background: var(--orange);
-  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.16);
-  animation: pulse 1s infinite;
-}
 .status .st .d.done {
   background: var(--teal);
   box-shadow: 0 0 0 3px rgba(0, 212, 170, 0.16);
-}
-@keyframes pulse {
-  50% {
-    opacity: 0.35;
-  }
 }
 .status .right {
   margin-left: auto;
@@ -1031,19 +1046,86 @@ onBeforeUnmount(() => {
   color: var(--muted);
   font-weight: 600;
 }
-.progress {
-  height: 2px;
-  background: var(--bg);
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
 }
-.progress > i {
-  display: block;
-  height: 100%;
-  width: 0;
-  background: var(--teal);
-  transition: width 0.35s ease;
+.pagebtn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+}
+.pagebtn svg {
+  width: 15px;
+  height: 15px;
+}
+.pagebtn:hover:not(:disabled) {
+  border-color: var(--teal-dim);
+  color: var(--ink);
+}
+.pagebtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.pagenums {
+  display: flex;
+  gap: 3px;
+}
+.pagenum {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.pagenum:hover {
+  border-color: var(--teal-dim);
+  color: var(--ink);
+}
+.pagenum.on {
+  border-color: var(--teal);
+  background: rgba(0, 212, 170, 0.12);
+  color: var(--ink);
+  font-weight: 600;
+}
+/* A form page the document does not reach: still editable, just unpaired. */
+.pagenum.missing:not(.on) {
+  color: var(--dim);
+  border-style: dashed;
+}
+.pagerhint {
+  margin-right: auto;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
 }
 
 /* ---------- workspace ---------- */
+/*
+ * The workspace fills what the console leaves it and no more.
+ *
+ * Every box from here down to the two viewers is shrinkable — a grid or flex
+ * item's automatic minimum is its content, and any pixel floor along the chain
+ * puts a panel back over its container's height, at which point the column grows
+ * to fit a zoomed scan instead of scrolling it. So there is no floor anywhere:
+ * on a short window the panels get short, and each still scrolls its own
+ * content, which is the behaviour wanted at every size.
+ */
 .work {
   flex: 1;
   display: grid;
@@ -1059,6 +1141,14 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /*
+   * Both minimums are needed, and for the same reason: a grid item's automatic
+   * minimum size is its content, so without these the column refuses to be
+   * shorter or narrower than what is inside it. The panel would then grow to fit
+   * a zoomed scan instead of scrolling it, and `overflow: auto` on the viewer
+   * would never have anything to do vertically.
+   */
+  min-height: 0;
   padding: 14px;
   gap: 12px;
 }
@@ -1106,11 +1196,6 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--line-2);
 }
-.badge.busy {
-  color: var(--orange);
-  background: var(--orange-fill);
-  border: 1px solid var(--orange);
-}
 .badge.done {
   color: var(--teal);
   background: rgba(0, 212, 170, 0.08);
@@ -1139,8 +1224,10 @@ onBeforeUnmount(() => {
   height: 15px;
 }
 
-/* drop zone */
-.drop {
+/* Left panel between documents. Nothing here is interactive: documents arrive
+   through the queue, so GET PDF is the only way to fill this panel. */
+.idle {
+  position: relative;
   flex: 1;
   min-height: 420px;
   border: 1.5px dashed var(--line-2);
@@ -1151,65 +1238,38 @@ onBeforeUnmount(() => {
   justify-content: center;
   gap: 6px;
   text-align: center;
-  cursor: pointer;
+  padding: 0 24px;
   background: var(--panel);
-  transition:
-    border-color 0.15s,
-    background 0.15s;
 }
-.drop:hover,
-.drop.dragover {
-  border-color: rgba(0, 212, 170, 0.4);
-  background: #0d1015;
-}
-.file-input-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-.drop .big {
+.idle .big {
   font-size: 40px;
   color: var(--dim);
   line-height: 1;
   margin-bottom: 8px;
 }
-.drop .h {
+.idle .h {
   font-size: 15px;
   color: var(--muted);
   font-weight: 500;
 }
-.drop .s {
+.idle .s {
   font-size: 11px;
   color: var(--dim);
-}
-.fmts {
-  display: flex;
-  gap: 7px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-  justify-content: center;
-}
-.fmt {
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--dim);
-  padding: 3px 8px;
-  border: 1px solid var(--line-2);
-  border-radius: 3px;
+  max-width: 30ch;
+  line-height: 1.5;
 }
 
 /* ---------- viewer (both sides) ---------- */
 .viewer {
   flex: 1;
-  min-height: 420px;
+  /*
+   * No pixel floor here. A minimum height on the panel is a minimum the panel
+   * refuses to shrink below, which on a short window puts it back over its
+   * container's height — and then the column grows to fit instead of the panel
+   * scrolling, which is exactly the bug this chain exists to avoid. The floor
+   * belongs on the workspace below, where overflowing means the page scrolls.
+   */
+  min-height: 0;
   height: 0;
   border: 1px solid var(--line-2);
   border-radius: 12px;
@@ -1221,147 +1281,102 @@ onBeforeUnmount(() => {
   display: flex;
 }
 .viewer.scan {
+  position: relative;
   background: #525659;
   padding: 0;
-  position: relative;
 }
-.pdf-frame {
-  width: 100%;
-  height: 100%;
-  border: 0;
+/*
+ * The scan panel scrolls as a plain block rather than a flex column.
+ *
+ * As a flex item the page was sized by flex rules on the main axis, so a zoomed
+ * image overflowed sideways (the stretched cross axis) but not downwards. In
+ * normal flow the image is simply content: both axes overflow the same way, and
+ * the panel scrolls in both.
+ *
+ * Needs `.show` on the selector — `.viewer` is `display: none` until then, and
+ * this must not override that.
+ */
+.viewer.scan.show {
   display: block;
+  /* The drag is ours; stop the browser treating it as a scroll gesture. */
+  touch-action: none;
 }
-
-/* PDF pointer overlay (native iframe swallows mouse events, so this just
-   shows a lightweight tracking line — no reliable click-to-field mapping) */
-.pdf-pointer-overlay {
+/* The page banner on a left panel with no image to overlay: the form beside it
+   always names a page, so this side names one too. */
+.cornermarker,
+.pendingmarker {
   position: absolute;
-  inset: 0;
-  cursor: crosshair;
-  z-index: 2;
-}
-.pdf-pointer-overlay.escaped {
-  cursor: default;
-}
-.pdf-pointer-line {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 2px dashed var(--teal);
-  box-shadow: 0 0 8px rgba(0, 212, 170, 0.55);
+  top: 10px;
+  left: 14px;
+  right: 14px;
+  margin: 0;
   pointer-events: none;
 }
+.pendingmarker {
+  color: var(--paper-dim);
+}
+.pendingmarker::before,
+.pendingmarker::after {
+  background: var(--paper-line);
+}
+.scan-pending {
+  margin: 0 auto;
+  padding: 24px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #cfd4dc;
+}
 
-/* image uploads: real DOM content, pixel-accurate pointer tracking + click-to-jump */
-.scan-image-wrap {
+/* One page of the scan. It is a block in the flow, not a filled panel, so its
+   height tracks the page image and page n can be lined up with form page n. */
+/*
+ * One page of the scan.
+ *
+ * Left at the panel's own width on purpose: the image's zoom is a percentage of
+ * this box, so sizing it to its contents instead would make that percentage
+ * circular. A zoomed image simply overflows it, and the panel scrolls.
+ */
+.scanpage {
   position: relative;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  cursor: crosshair;
   background: #1a1a1a;
 }
-.scan-image-wrap.escaped {
-  cursor: default;
+/* Zoomed in there is more page than panel, so the gesture becomes drag-to-move. */
+.scanpage.pannable {
+  cursor: grab;
+}
+.scanpage.panning {
+  cursor: grabbing;
+}
+.scanmarker {
+  position: absolute;
+  top: 6px;
+  left: 8px;
+  right: 8px;
+  z-index: 2;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.75);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
 }
 .scan-image {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  /* width is set inline from the zoom; overflow is what the panel scrolls */
+  height: auto;
+  min-width: 100%;
   display: block;
   user-select: none;
 }
-.scan-crosshair-h {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 1.5px dashed var(--teal);
-  box-shadow: 0 0 6px rgba(0, 212, 170, 0.6);
-  pointer-events: none;
-}
-.scan-crosshair-v {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1.5px dashed var(--teal);
-  box-shadow: 0 0 6px rgba(0, 212, 170, 0.6);
-  pointer-events: none;
-}
-.scan-crosshair-dot {
-  position: absolute;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--teal);
-  box-shadow: 0 0 8px rgba(0, 212, 170, 0.85);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-/* mirrored pointer: reflects the right panel's hover/edit position onto the
-   left panel, in the orange accent so it's distinct from the teal direct-hover
-   indicators above */
-.edit-link-line,
-.edit-link-h {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 0;
-  border-top: 2px dashed var(--orange);
-  box-shadow: 0 0 8px rgba(255, 107, 53, 0.55);
-  pointer-events: none;
-}
-.edit-link-v {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1.5px dashed var(--orange);
-  box-shadow: 0 0 6px rgba(255, 107, 53, 0.55);
-  pointer-events: none;
-}
-.edit-link-dot {
-  position: absolute;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--orange);
-  box-shadow: 0 0 8px rgba(255, 107, 53, 0.85);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
 .viewer.ocr {
   background: var(--panel);
   padding: 0;
 }
+/* Dragging the form's margins moves the page; the cells keep their text cursor. */
+.viewer.ocr.panning,
+.viewer.ocr.panning * {
+  cursor: grabbing;
+}
 
-/* hint banner (right) */
-.hint {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  padding: 8px 14px;
-  background: rgba(0, 212, 170, 0.07);
-  border-bottom: 1px solid var(--line-2);
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--teal);
-  letter-spacing: 0.02em;
-}
-.viewer.ocr .hint.show {
-  display: flex;
-}
-.hint svg {
-  width: 12px;
-  height: 12px;
-}
 .ocr-body {
   padding: 14px 16px 20px;
 }
@@ -1392,38 +1407,6 @@ onBeforeUnmount(() => {
   background: var(--paper-line);
 }
 
-/* paper page */
-.page.paper {
-  background: var(--paper-2);
-  color: var(--paper-ink);
-  border-radius: 4px;
-  padding: 20px 18px;
-  box-shadow:
-    0 2px 3px rgba(0, 0, 0, 0.18),
-    0 16px 34px -18px rgba(0, 0, 0, 0.5);
-  font-family: var(--sans);
-}
-.page.paper .doctitle {
-  text-align: center;
-  font-weight: 700;
-  font-size: 14px;
-  letter-spacing: 0.01em;
-}
-.page.paper .docsub {
-  text-align: center;
-  font-size: 10.5px;
-  color: var(--paper-dim);
-  font-style: italic;
-  margin-top: 2px;
-}
-.page.paper .blank {
-  text-align: center;
-  color: var(--paper-dim);
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 60px 0;
-}
-
 /* ocr page block */
 .ocr .pageblock {
   margin-bottom: 8px;
@@ -1449,139 +1432,100 @@ onBeforeUnmount(() => {
   font-style: italic;
 }
 
-/* tables (shared) */
-.ftab {
+/* the master form
+   It arrives as server-rendered HTML through v-html, so it carries no scope
+   attribute: every rule below has to reach into it with :deep(). */
+.docbody :deep(.ftab) {
   width: 100%;
   border-collapse: collapse;
   font-size: 10.5px;
   margin: 8px 0;
   table-layout: fixed;
 }
-.ftab td {
+.docbody :deep(.ftab td) {
   border: 1px solid var(--line-2);
   padding: 4px 6px;
   vertical-align: top;
   word-break: break-word;
 }
-.scan .ftab td {
-  border-color: var(--paper-line);
-}
-.ftab td.num {
+.docbody :deep(.ftab td.num) {
   width: 22px;
   text-align: center;
   color: var(--dim);
   font-family: var(--mono);
   font-size: 9.5px;
 }
-.scan .ftab td.num {
-  color: var(--paper-dim);
-}
-.ftab td.lbl {
+.docbody :deep(.ftab td.lbl) {
   font-weight: 500;
 }
-.ftab td.hdr {
+.docbody :deep(.ftab td.hdr) {
   font-weight: 700;
   background: var(--card);
   font-size: 10px;
 }
-.scan .ftab td.hdr {
-  background: var(--paper);
-}
-.ftab td.opt {
-  font-family: var(--mono);
-  font-size: 9px;
-  color: var(--muted);
-  letter-spacing: -0.01em;
-}
-.scan .ftab td.opt {
-  color: var(--paper-dim);
-}
-.ocr .ftab td.data,
-.ocr .ftab td.opt {
+
+/* slots: the cells the extraction fills and the user corrects */
+.docbody :deep(.ftab td.data),
+.docbody :deep(.ftab td.select) {
   background: rgba(0, 212, 170, 0.04);
 }
-
-/* select (dropdown) cells */
-.ftab td.select {
+.docbody :deep(.ftab td.select) {
   padding: 2px 4px;
 }
-.cellselect {
+/* a slot whose value contradicts its person's marital status; see validateMarriage() */
+.docbody :deep(.ftab td.invalid),
+.docbody :deep(.ftab td.invalid:hover),
+.docbody :deep(.ftab td.invalid:focus) {
+  background: rgba(239, 68, 68, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.6);
+}
+.docbody :deep(.cellselect) {
   width: 100%;
   border: none;
   background: transparent;
-  color: inherit;
+  color: var(--muted);
   font: inherit;
   font-family: var(--mono);
   font-size: 9.5px;
   padding: 3px 4px;
   border-radius: 4px;
   cursor: pointer;
-}
-.ocr .ftab td.select {
-  background: rgba(0, 212, 170, 0.04);
-}
-.ocr .ftab .cellselect {
-  color: var(--muted);
   transition: background 0.12s;
 }
-.ocr .ftab .cellselect:hover {
+.docbody :deep(.cellselect:hover) {
   background: rgba(0, 212, 170, 0.09);
 }
-.ocr .ftab .cellselect:focus {
+.docbody :deep(.cellselect:focus) {
   outline: 1.5px solid var(--teal);
   outline-offset: -1px;
   background: rgba(0, 212, 170, 0.12);
   color: var(--ink);
 }
-.ocr .ftab .cellselect option {
+.docbody :deep(.cellselect option) {
   background: var(--panel);
   color: var(--ink);
 }
-
-/* editable cells (annotatable) */
-.ocr .ftab td[contenteditable] {
-  cursor: text;
-  min-height: 20px;
-  transition: background 0.12s;
-}
-.ocr .ftab td[contenteditable]:hover {
-  background: rgba(0, 212, 170, 0.09);
-}
-.ocr .ftab td[contenteditable]:focus {
-  outline: 1.5px solid var(--teal);
-  outline-offset: -1px;
-  background: rgba(0, 212, 170, 0.12);
-  color: var(--ink);
-}
-.ocr .ftab td.data:empty::after {
+/* a slot nothing was read for still needs a visible target to click */
+.docbody :deep(.ftab td.data:empty)::after,
+.docbody :deep(.notedata:empty)::after {
   content: '·';
   color: var(--dim);
 }
 
-/* row highlight when jumped-to from the scan pointer */
-@keyframes rowFlash {
-  0%,
-  100% {
-    box-shadow: none;
-  }
-  50% {
-    box-shadow: inset 0 0 0 9999px rgba(0, 212, 170, 0.18);
-  }
-}
-.ocr .ftab tr.row-flash td {
-  animation: rowFlash 1.2s ease;
-}
 
-/* notes block */
-.notes {
+
+/* extra-notes block */
+.docbody :deep(.notes) {
   margin-top: 14px;
   font-size: 11px;
   line-height: 1.7;
+  color: var(--muted);
 }
-.notes .nt {
+.docbody :deep(.notes .nt) {
   font-weight: 700;
+  color: var(--ink);
 }
-.notes .grid {
+.docbody :deep(.notes .grid) {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 2px 24px;
@@ -1589,14 +1533,11 @@ onBeforeUnmount(() => {
   font-family: var(--mono);
   font-size: 10px;
 }
-.scan .notes {
-  color: var(--paper-ink);
-}
-.ocr .notes {
-  color: var(--muted);
-}
-.ocr .notes .nt {
-  color: var(--ink);
+.docbody :deep(.notes .notedata) {
+  display: inline-block;
+  min-width: 96px;
+  margin-left: 6px;
+  border-bottom: 1px solid var(--line-2);
 }
 
 /* output empty-state */
@@ -1636,33 +1577,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-/* prompt bar */
-.promptbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-radius: 8px;
-  padding: 4px 14px;
-  background: var(--card);
-}
-.promptbar .lab {
-  font-family: var(--mono);
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  color: var(--dim);
-  flex: none;
-}
-.promptbar input {
-  flex: 1;
-  background: transparent;
-  border: 0;
-  color: var(--ink);
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 9px 0;
-  outline: none;
-}
-
 /* toast */
 .toast {
   position: fixed;
@@ -1687,12 +1601,39 @@ onBeforeUnmount(() => {
   opacity: 1;
   transform: translate(-50%, 0);
 }
-@media (prefers-reduced-motion: reduce) {
-  .status .st .d.busy {
-    animation: none;
-  }
-  .progress > i {
-    transition: none;
-  }
+/* the editable form body */
+.docbody {
+  padding: 2px 0 6px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+/* editable regions: table cells and text blocks alike */
+.doctitle[contenteditable],
+.docsub[contenteditable],
+.docbody :deep([contenteditable='true']) {
+  outline: none;
+  border-radius: 3px;
+  transition: background 0.12s, box-shadow 0.12s;
+  cursor: text;
+}
+.doctitle[contenteditable]:hover,
+.docsub[contenteditable]:hover,
+.docbody :deep([contenteditable='true']:hover) {
+  background: rgba(0, 212, 170, 0.07);
+}
+.doctitle[contenteditable]:focus,
+.docsub[contenteditable]:focus,
+.docbody :deep([contenteditable='true']:focus) {
+  background: rgba(0, 212, 170, 0.1);
+  box-shadow: inset 0 0 0 1px var(--teal-dim);
+}
+
+/* page heading lines */
+.ocr .doctitle[contenteditable],
+.ocr .docsub[contenteditable] {
+  padding: 1px 3px;
 }
 </style>
