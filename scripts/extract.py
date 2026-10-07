@@ -7,19 +7,22 @@ Two modes:
 
          python extract.py family_form.pdf extract.json
 
-  2. Watch — poll files/incoming/ for Form<N>.pdf / Form_<N>.pdf, extract each one
-     against extract.json, then move the PDF and its JSON into files/processing/
-     as a pair. Anything that fails goes to files/failed/.
+  2. Watch — poll files/incoming/ for any *.pdf, extract each one against extract.json,
+     rename the PDF + JSON pair to <uuid>.pdf / <uuid>.json (checking .data/forms.db to
+     avoid collisions), then move them into files/processing/. Anything that fails goes
+     to files/failed/.
 
          python extract.py --watch
 """
 
 import argparse
+import hashlib
 import json
 import os
-import re
+import sqlite3
 import sys
 import time
+import uuid
 
 import requests
 from dotenv import load_dotenv
@@ -34,12 +37,13 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INCOMING_DIR = os.path.join(PROJECT_ROOT, "files/incoming")     # watched; drop forms here
 PROCESSING_DIR = os.path.join(PROJECT_ROOT, "files/processing")  # the pdf + json pair lands here
 FAILED_DIR = os.path.join(PROJECT_ROOT, "files/failed")          # rejected or errored; redrop to retry
+DB_PATH = os.path.join(PROJECT_ROOT, ".data/forms.db")           # one-time id collision check
 SCHEMA_PATH = os.path.join(SCRIPT_DIR, "extract.json")           # the extraction schema watch mode uses
 
-FORM_NAME_RE = re.compile(r"form_?(\d+)$", re.I)  # loosen to accept other filename shapes
 POLL_INTERVAL_S = 3          # gap between status checks on one extraction
 REQUEST_TIMEOUT_S = 600      # give up on one document after this long
 WATCH_INTERVAL_S = 3         # gap between sweeps of the incoming folder in --watch
+NAMESPACE_UUID = uuid.uuid5(uuid.NAMESPACE_URL, "DataAnnotator")  # stable namespace for content hashing
 
 
 class ExtractionError(Exception):
@@ -101,6 +105,51 @@ def resolve_api_key():
     return key
 
 
+def content_uuid(pdf_path):
+    """Deterministic uuid5 from PDF contents — same file always yields the same id."""
+    sha256 = hashlib.sha256()
+    with open(pdf_path, "rb") as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return str(uuid.uuid5(NAMESPACE_UUID, sha256.hexdigest()))
+
+
+def claim_id(pdf_path, db_path):
+    """Reserve an id for this PDF. Returns a uuid that is not yet in forms.filename.
+
+    First tries uuid5(content), then uuid4() if that id is taken or already in processing/.
+    """
+    try:
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=1)
+        cursor = conn.cursor()
+    except (sqlite3.OperationalError, FileNotFoundError):
+        # DB or table missing — treat as empty
+        conn = None
+        cursor = None
+
+    candidate = content_uuid(pdf_path)
+
+    # Check if candidate already exists in the database
+    if cursor:
+        try:
+            cursor.execute("SELECT 1 FROM forms WHERE filename = ?", (f"{candidate}.json",))
+            if cursor.fetchone():
+                # Collision in database — use uuid4 instead
+                candidate = str(uuid.uuid4())
+        except sqlite3.OperationalError:
+            pass
+
+    if conn:
+        conn.close()
+
+    # Also check if the files already exist in processing/ (graceful handling)
+    if os.path.exists(os.path.join(PROCESSING_DIR, f"{candidate}.pdf")) or \
+       os.path.exists(os.path.join(PROCESSING_DIR, f"{candidate}.json")):
+        candidate = str(uuid.uuid4())
+
+    return candidate
+
+
 # --- Mode 1: one shot ------------------------------------------------------------
 
 
@@ -119,9 +168,8 @@ def run_once(pdf_path, schema_path):
 
 
 def is_form_pdf(filename):
-    """Form3.pdf and Form_3.pdf are forms; anything else in the folder is not."""
-    stem, extension = os.path.splitext(filename)
-    return extension.lower() == ".pdf" and FORM_NAME_RE.fullmatch(stem) is not None
+    """Any .pdf file is a form; ignore everything else."""
+    return os.path.splitext(filename)[1].lower() == ".pdf"
 
 
 def free_stem(directory, stem):
@@ -144,15 +192,17 @@ def move_to_failed(pdf_path):
     return target
 
 
-def process_one(pdf_path, schema, api_key):
-    """Extract one form, then file the PDF and its JSON together."""
+def process_one(pdf_path, schema, api_key, db_path):
+    """Extract one form, then file the PDF and its JSON together as <uuid>.*."""
     filename = os.path.basename(pdf_path)
-    print(f"[extract] reading {filename}")
+
+    # Claim an id BEFORE extracting (so a duplicate never wastes an API call)
+    stem = claim_id(pdf_path, db_path)
+    print(f"[extract] reading {filename} -> {stem}")
 
     data = extract(pdf_path, schema, api_key)
 
     os.makedirs(PROCESSING_DIR, exist_ok=True)
-    stem = free_stem(PROCESSING_DIR, os.path.splitext(filename)[0])
     pdf_target = os.path.join(PROCESSING_DIR, stem + ".pdf")
     json_target = os.path.join(PROCESSING_DIR, stem + ".json")
 
@@ -170,7 +220,7 @@ def process_one(pdf_path, schema, api_key):
     if missing:
         raise ExtractionError(f"filed incompletely, missing: {', '.join(missing)}")
 
-    print(f"[extract] {filename}: {os.path.basename(pdf_target)} + {os.path.basename(json_target)}")
+    print(f"[extract] filed as {stem}.pdf + {stem}.json")
 
 
 def settled(path, seen):
@@ -185,7 +235,7 @@ def settled(path, seen):
     return previous == seen[path] and info.st_size > 0
 
 
-def sweep(schema, api_key, seen):
+def sweep(schema, api_key, seen, db_path):
     """One pass over the incoming folder."""
     for filename in sorted(os.listdir(INCOMING_DIR)):
         path = os.path.join(INCOMING_DIR, filename)
@@ -196,7 +246,7 @@ def sweep(schema, api_key, seen):
 
         seen.pop(path, None)
         try:
-            process_one(path, schema, api_key)
+            process_one(path, schema, api_key, db_path)
         except Exception as error:  # one bad document must not end the sweep
             print(f"[extract] {filename}: failed — {error}", file=sys.stderr)
             try:
@@ -205,7 +255,7 @@ def sweep(schema, api_key, seen):
                 print(f"[extract] {filename}: could not be moved — {move_error}", file=sys.stderr)
 
 
-def run_watch(schema_path):
+def run_watch(schema_path, db_path):
     api_key = resolve_api_key()
     schema = load_schema(schema_path)
 
@@ -218,7 +268,7 @@ def run_watch(schema_path):
     try:
         while True:
             try:
-                sweep(schema, api_key, seen)
+                sweep(schema, api_key, seen, db_path)
             except Exception as error:  # one bad sweep must not end the loop
                 print(f"[extract] sweep failed: {error}", file=sys.stderr)
             time.sleep(WATCH_INTERVAL_S)
@@ -239,16 +289,22 @@ def main():
     parser.add_argument("--incoming", help="folder to watch")
     parser.add_argument("--processing", help="folder the pdf + json pair is filed into")
     parser.add_argument("--failed", help="folder failures are moved to")
+    parser.add_argument("--db", help="path to .data/forms.db for id collision checks")
     parser.add_argument("--interval", type=float, help="seconds between sweeps in --watch")
     args = parser.parse_args()
 
-    global INCOMING_DIR, PROCESSING_DIR, FAILED_DIR, WATCH_INTERVAL_S
+    global INCOMING_DIR, PROCESSING_DIR, FAILED_DIR, WATCH_INTERVAL_S, DB_PATH
     if args.incoming:
         INCOMING_DIR = os.path.abspath(args.incoming)
     if args.processing:
         PROCESSING_DIR = os.path.abspath(args.processing)
     if args.failed:
         FAILED_DIR = os.path.abspath(args.failed)
+    if args.db:
+        DB_PATH = os.path.abspath(args.db)
+    else:
+        # Honor QUEUE_DB_FILE env var like nuxt.config.ts does
+        DB_PATH = os.getenv("QUEUE_DB_FILE", DB_PATH)
     if args.interval:
         WATCH_INTERVAL_S = args.interval
 
@@ -257,7 +313,7 @@ def main():
     if args.watch:
         if args.pdf:
             parser.error("--watch takes no PDF argument")
-        run_watch(schema_path)
+        run_watch(schema_path, DB_PATH)
     elif args.pdf:
         run_once(args.pdf, schema_path)
     else:
