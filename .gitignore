@@ -13,6 +13,12 @@ env/
 
 # Generated output
 generated_schemas.json
+graphify-out/
+
+# Local developer tooling (skills, editor settings), not part of the app
+.agents/
+.claude/
+skills-lock.json
 
 # Local PDFs
 *.pdf
@@ -40,9 +46,6 @@ dist/
 
 # Nitro dev storage (sqlite)
 .data/
-
-# Stray dir from `nuxt dev -- --host` treating --host as rootDir
-/--host/
 
 # Extracted form data — contains real names, emails, phone numbers
 files/

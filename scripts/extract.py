@@ -37,6 +37,8 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 INCOMING_DIR = os.path.join(PROJECT_ROOT, "files/incoming")     # watched; drop forms here
 PROCESSING_DIR = os.path.join(PROJECT_ROOT, "files/processing")  # the pdf + json pair lands here
 FAILED_DIR = os.path.join(PROJECT_ROOT, "files/failed")          # rejected or errored; redrop to retry
+DUPLICATE_DIR = os.path.join(PROJECT_ROOT, "files/duplicates")   # already read once; set aside, not re-read
+LEDGER_PATH = os.path.join(PROJECT_ROOT, "files/read_ledger.tsv")  # one line per PDF read: digest, stem, name
 DB_PATH = os.path.join(PROJECT_ROOT, ".data/forms.db")           # one-time id collision check
 SCHEMA_PATH = os.path.join(SCRIPT_DIR, "extract.json")           # the extraction schema watch mode uses
 
@@ -192,9 +194,42 @@ def move_to_failed(pdf_path):
     return target
 
 
+def file_digest(path):
+    """SHA-256 of the PDF's bytes. The same file always gives the same digest."""
+    sha256 = hashlib.sha256()
+    with open(path, "rb") as f:
+        while chunk := f.read(8192):
+            sha256.update(chunk)
+    return sha256.hexdigest()
+
+
+def read_digests():
+    """Digests of every PDF already read successfully, from the ledger."""
+    if not os.path.exists(LEDGER_PATH):
+        return set()
+    with open(LEDGER_PATH) as f:
+        return {line.split("\t", 1)[0] for line in f if line.strip()}
+
+
+def record_digest(digest, stem, filename):
+    """Appends one successful read to the ledger, so the file is never read again."""
+    os.makedirs(os.path.dirname(LEDGER_PATH), exist_ok=True)
+    with open(LEDGER_PATH, "a") as f:
+        f.write(f"{digest}\t{stem}\t{filename}\n")
+
+
 def process_one(pdf_path, schema, api_key, db_path):
     """Extract one form, then file the PDF and its JSON together as <uuid>.*."""
     filename = os.path.basename(pdf_path)
+
+    # A PDF already read is set aside, not sent to the API again.
+    digest = file_digest(pdf_path)
+    if digest in read_digests():
+        os.makedirs(DUPLICATE_DIR, exist_ok=True)
+        target = os.path.join(DUPLICATE_DIR, free_stem(DUPLICATE_DIR, os.path.splitext(filename)[0]) + ".pdf")
+        os.replace(pdf_path, target)
+        print(f"[extract] {filename}: already read, moved to {target} (no API call)")
+        return
 
     # Claim an id BEFORE extracting (so a duplicate never wastes an API call)
     stem = claim_id(pdf_path, db_path)
@@ -220,6 +255,7 @@ def process_one(pdf_path, schema, api_key, db_path):
     if missing:
         raise ExtractionError(f"filed incompletely, missing: {', '.join(missing)}")
 
+    record_digest(digest, stem, filename)
     print(f"[extract] filed as {stem}.pdf + {stem}.json")
 
 

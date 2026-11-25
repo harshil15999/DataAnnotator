@@ -21,9 +21,17 @@ import type { FieldValues } from './formTemplate'
  * not) or failed (never reaches this table at all; see `insertFailed`). There
  * is no third path and no in-between status.
  *
- * Only one person uses this, so there is no locking, no claim protocol and no
- * ownership: the folders carry the state and this carries the data.
+ * Several reviewers use this. A document is claimed by one reviewer at a time
+ * (see `claimNext`), and an approval is accepted only from the reviewer holding
+ * the claim (see `approveForm`). The folders still carry the file state; this
+ * carries the data.
  */
+
+/** How long a claim holds a document before it goes back to the queue. */
+export const CLAIM_MINUTES = 30
+
+/** A claim that is still within its time. Used as a SQL condition. */
+const LIVE_CLAIM = `claimed_at > datetime('now', '-${CLAIM_MINUTES} minutes')`
 
 /* ------------------------------------------------------------------ *
  * Types
@@ -49,6 +57,13 @@ export interface FormRow {
   /** The source page each value was read off. Same keys as {@link values}. */
   valuePages: Record<string, number>
 
+  /** The reviewer holding the claim, and when the claim was taken (UTC). */
+  claimedBy: string | null
+  claimedAt: string | null
+  /** The reviewer who approved it, and when (UTC). */
+  approvedBy: string | null
+  approvedAt: string | null
+
   updatedAt: string
 }
 
@@ -63,6 +78,10 @@ interface RawRow {
   fields_total: number
   values_json: string
   value_pages: string
+  claimed_by: string | null
+  claimed_at: string | null
+  approved_by: string | null
+  approved_at: string | null
   updated_at: string
 }
 
@@ -76,8 +95,8 @@ interface RawRow {
  * is no `DROP` anywhere in this file.
  *
  * There is deliberately no migration machinery. Changing the schema below will
- * not alter a database that already exists; delete `.data/forms.db` and let it
- * be created again. That is the right trade for a tool that is set up once.
+ * not alter a database that already exists. An existing database gets the claim
+ * columns from `scripts/migrations/001_reviewer_claims.sql`, run once by hand.
  *
  * SQLite has no JSON type. Every JSON column below is TEXT with a `json_valid`
  * CHECK, so a malformed value is refused on write rather than surfacing much
@@ -105,10 +124,17 @@ CREATE TABLE IF NOT EXISTS forms (
   -- was read off the scan, so a field typed in by hand has no entry.
   value_pages   TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(value_pages)),
 
+  -- Who is working on it. A claim lasts CLAIM_MINUTES from claimed_at.
+  claimed_by    TEXT,
+  claimed_at    TEXT,
+  -- Who approved it, and when. Set once, on approval.
+  approved_by   TEXT,
+  approved_at   TEXT,
+
   updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
--- Serves nextForValidation()'s "oldest waiting" lookup and the export's filter.
+-- Serves claimNext()'s "oldest waiting" lookup and the export's filter.
 CREATE INDEX IF NOT EXISTS idx_forms_status ON forms (status, id);
 `
 
@@ -191,6 +217,10 @@ function hydrate(raw: RawRow | undefined): FormRow | null {
     fieldsTotal: raw.fields_total ?? 0,
     values: parseJson<FieldValues>(raw.values_json, {}, `#${raw.id} values_json`),
     valuePages: parseJson<Record<string, number>>(raw.value_pages, {}, `#${raw.id} value_pages`),
+    claimedBy: raw.claimed_by ?? null,
+    claimedAt: raw.claimed_at ?? null,
+    approvedBy: raw.approved_by ?? null,
+    approvedAt: raw.approved_at ?? null,
     updatedAt: raw.updated_at,
   }
 }
@@ -264,26 +294,88 @@ export function findByFilename(filename: string): FormRow | null {
 }
 
 /**
- * The oldest document still waiting to be checked.
+ * Hands one document to a reviewer and marks it claimed for them.
  *
- * With one user this is the whole queue mechanism — no claiming, no locking.
- * A document leaves the queue by being approved.
+ * A reviewer who already holds a live claim gets that document back. Otherwise
+ * the oldest waiting document is claimed: an unclaimed one, or one whose claim
+ * ran out. An expired document from another reviewer comes before the reviewer's
+ * own, so a document is not handed straight back to whoever lost it unless
+ * nothing else is waiting. The lookup and the claim run in one transaction.
  */
-export function nextForValidation(): FormRow | null {
-  return hydrate(useDb().prepare<unknown[], RawRow>(`
-    SELECT * FROM forms WHERE status = 'under_validation' ORDER BY id LIMIT 1
-  `).get())
+export function claimNext(reviewer: string): FormRow | null {
+  const db = useDb()
+
+  const claim = db.transaction((name: string) => {
+    const held = db.prepare<unknown[], RawRow>(`
+      SELECT * FROM forms
+       WHERE status = 'under_validation' AND claimed_by = ? AND ${LIVE_CLAIM}
+       ORDER BY id LIMIT 1
+    `).get(name)
+    if (held) return held
+
+    return db.prepare<unknown[], RawRow>(`
+      UPDATE forms SET claimed_by = ?, claimed_at = datetime('now')
+       WHERE id = (
+         SELECT id FROM forms
+          WHERE status = 'under_validation'
+            AND (claimed_by IS NULL OR NOT ${LIVE_CLAIM})
+          ORDER BY COALESCE(claimed_by = ?, 0), id
+          LIMIT 1
+       )
+      RETURNING *
+    `).get(name, name)
+  })
+
+  return hydrate(claim(reviewer))
 }
 
-/** Saves the corrected values and takes the document out of the queue. */
-export function approveForm(id: number, values: FieldValues): boolean {
-  const info = useDb().prepare(`
-    UPDATE forms
-       SET values_json = ?, status = 'approved', updated_at = datetime('now')
-     WHERE id = ? AND status = 'under_validation'
-  `).run(JSON.stringify(values), id)
+/** Why an approval was refused. `code` matches the reply the console reads. */
+export type ApproveResult
+  = | { ok: true }
+    | { ok: false; code: 'not_found' }
+    | { ok: false; code: 'already_approved'; by: string | null; at: string | null }
+    | { ok: false; code: 'claimed_by'; by: string | null }
+    | { ok: false; code: 'claim_expired'; at: string | null }
 
-  return info.changes === 1
+/**
+ * Saves the corrected values and takes the document out of the queue.
+ *
+ * Succeeds only for the reviewer holding a live claim. When it does not, the
+ * reason is read from the row, checked in this order: not found, already
+ * approved, claimed by someone else, claim expired. Checking approval first means
+ * an approved document never reports a claim.
+ */
+export function approveForm(id: number, values: FieldValues, reviewer: string): ApproveResult {
+  const db = useDb()
+
+  const info = db.prepare(`
+    UPDATE forms
+       SET values_json = ?, status = 'approved', approved_by = ?,
+           approved_at = datetime('now'), updated_at = datetime('now')
+     WHERE id = ? AND status = 'under_validation'
+       AND claimed_by = ? AND ${LIVE_CLAIM}
+  `).run(JSON.stringify(values), reviewer, id, reviewer)
+
+  if (info.changes === 1) return { ok: true }
+
+  const row = db.prepare<unknown[], {
+    status: FormStatus
+    claimed_by: string | null
+    approved_by: string | null
+    approved_at: string | null
+    expires_at: string | null
+  }>(`
+    SELECT status, claimed_by, approved_by, approved_at,
+           datetime(claimed_at, '+${CLAIM_MINUTES} minutes') AS expires_at
+      FROM forms WHERE id = ?
+  `).get(id)
+
+  if (!row || row.status === 'failed') return { ok: false, code: 'not_found' }
+  if (row.status === 'approved') {
+    return { ok: false, code: 'already_approved', by: row.approved_by, at: row.approved_at }
+  }
+  if (row.claimed_by !== reviewer) return { ok: false, code: 'claimed_by', by: row.claimed_by }
+  return { ok: false, code: 'claim_expired', at: row.expires_at }
 }
 
 /**
@@ -313,4 +405,18 @@ export function countsByStatus(): Record<FormStatus, number> {
 
   for (const row of rows) counts[row.status] = row.n
   return counts
+}
+
+/** Approved documents per reviewer, keyed by the name stored at approval. */
+export function approvalsByReviewer(): Record<string, number> {
+  const rows = useDb()
+    .prepare<unknown[], { name: string; n: number }>(`
+      SELECT approved_by AS name, count(*) AS n
+        FROM forms
+       WHERE status = 'approved' AND approved_by IS NOT NULL
+       GROUP BY approved_by
+    `)
+    .all()
+
+  return Object.fromEntries(rows.map(row => [row.name, row.n]))
 }

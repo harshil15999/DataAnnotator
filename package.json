@@ -18,8 +18,7 @@
     "better-sqlite3": "^12.11.1",
     "nuxt": "^4.5.2",
     "pdf-poppler": "^0.2.3",
-    "vue": "^3.5.42",
-    "vue-router": "^5.3.0"
+    "vue": "^3.5.42"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",

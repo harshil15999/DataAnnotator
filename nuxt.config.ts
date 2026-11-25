@@ -31,10 +31,4 @@ export default defineNuxtConfig({
     // Both ship platform binaries and must not be bundled.
     externals: { external: ['pdf-poppler', 'better-sqlite3'] },
   },
-
-  // ponytail: wide open so an ngrok tunnel (random host each run) isn't blocked.
-  // Tighten to specific hosts if this ever leaves a trusted dev tunnel.
-  vite: {
-    server: { allowedHosts: true },
-  },
 })

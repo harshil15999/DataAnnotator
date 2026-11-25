@@ -2,11 +2,17 @@ import { defineEventHandler, getQuery, setHeader } from 'h3'
 
 import type { FormStatus } from '../../utils/db'
 import { listForms } from '../../utils/db'
-import { csvHeader, csvLayout, csvRows, toCsv } from '../../utils/formCsv'
-import { buildFormPages, distinctFields } from '../../utils/formTemplate'
+import type { FieldValues } from '../../utils/formTemplate'
+import { columnToField, constructName, getColumnNames } from '../../utils/formSchema'
+
+/** Wraps a value in quotes when it holds a comma, quote, or line break. */
+const escapeCsv = (value: string): string => {
+  const normalized = value.replace(/\r\n?/g, '\n')
+  return /[",\n]/.test(normalized) ? `"${normalized.replace(/"/g, '""')}"` : normalized
+}
 
 /**
- * Every form as one sheet: one row per person, five rows per document.
+ * Export as CSV: one row per person, columns from SCHEMA_COLUMNS in formSchema.
  *
  * `?status=approved` narrows it to finished work — that is what EXPORT ALL
  * asks for. With no status, everything comes out, whatever state it is in.
@@ -17,35 +23,53 @@ export default defineEventHandler(async (event) => {
     ? requested as FormStatus
     : undefined
 
-  // Column order comes from the template, the same source the console uses.
-  const layout = csvLayout(distinctFields(await buildFormPages()).map(field => field.key))
+  const columnNames = getColumnNames()
 
-  // Enough of the record to judge a row without opening the database: where it
-  // came from, whether it can be trusted, and why it is empty when it is.
-  const leading = [
-    'id', 'filename', 'status', 'error',
-    'pages', 'fields_read', 'fields_total', 'read_pct',
-    'validated_at',
-  ]
+  const getValue = (values: FieldValues, colName: string, personNum: number): string => {
+    const fieldKey = columnToField(colName)
 
-  const rows = listForms(status).flatMap(form =>
-    csvRows(form.values, layout).map(cells => [
-      String(form.id),
-      form.filename,
-      form.status,
-      form.error ?? '',
-      String(form.pageCount),
-      String(form.fieldsFilled),
-      String(form.fieldsTotal),
-      form.fieldsTotal ? `${Math.round((form.fieldsFilled / form.fieldsTotal) * 100)}%` : '',
-      form.updatedAt,
-      ...cells,
-    ]),
-  )
+    // Special handling for compound fields
+    if (colName === 'Grand Father Of Head Of the Family') {
+      return constructName(values, 'grandfather')
+    }
+    if (colName === 'Father Of Head Of the Family') {
+      return constructName(values, 'father')
+    }
+
+    // Household fields (no person number)
+    if (fieldKey && ['form_no', 'village', 'total_members'].includes(fieldKey)) {
+      return String(values[fieldKey] ?? '')
+    }
+
+    // Person fields
+    if (fieldKey) {
+      const personKey = `p${personNum}.${fieldKey}`
+      return String(values[personKey] ?? '')
+    }
+
+    return ''
+  }
+
+  const rows = listForms(status).flatMap((form) => {
+    // Always export 5 rows (empty rows filtered by user). Each row also carries
+    // who approved the document and when, so the sheet says who did the work.
+    return Array.from({ length: 5 }, (_, idx) => {
+      const personNum = idx + 1
+      return [
+        ...columnNames.map(col => getValue(form.values, col, personNum)),
+        form.approvedBy ?? '',
+        form.approvedAt ?? '',
+      ]
+    })
+  })
 
   const name = status ? `forms-${status}` : 'forms-all'
   setHeader(event, 'content-type', 'text/csv;charset=utf-8')
   setHeader(event, 'content-disposition', `attachment; filename="${name}-${new Date().toISOString().slice(0, 10)}.csv"`)
 
-  return toCsv(csvHeader(layout, leading), rows)
+  // Build CSV with header and rows
+  const headerRow = [...columnNames, 'approved_by', 'approved_at'].map(col => escapeCsv(col)).join(',')
+  const dataRows = rows.map(cells => cells.map(cell => escapeCsv(String(cell))).join(',')).join('\r\n')
+
+  return `﻿${headerRow}\r\n${dataRows}\r\n`
 })

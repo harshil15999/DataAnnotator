@@ -60,7 +60,100 @@ const editedKeys = ref(new Set<string>())
 /** The document handed over by GET PDF, or null when none is being checked. */
 const queueId = ref<number | null>(null)
 const queueBusy = ref(false)
-const queueStats = ref<Record<string, number> | null>(null)
+const queueStats = ref<QueueStats | null>(null)
+
+/* ---------- who is working ---------- */
+/** Saved in the browser, so a reviewer is not asked again on every visit. */
+const REVIEWER_KEY = 'ocr.reviewer'
+/** The names the server accepts, from GET /api/reviewers. */
+const reviewers = ref<string[]>([])
+/** The reviewer at the console, or null while the start screen is up. */
+const reviewer = ref<string | null>(null)
+/** The name selected on the start screen, before it is confirmed. */
+const choice = ref('')
+/** When the held document's claim started, as the server wrote it (UTC). */
+const claimedAt = ref<string | null>(null)
+/** Current time, refreshed each second, so the claim countdown moves. */
+const now = ref(Date.now())
+let clock: ReturnType<typeof setInterval> | undefined
+
+const CLAIM_MS = 30 * 60 * 1000
+const WARNING_MS = 25 * 60 * 1000
+
+/** When the claim started, in milliseconds. The server writes UTC without a zone, so one is added. */
+const claimStart = computed(() => claimedAt.value ? Date.parse(`${claimedAt.value.replace(' ', 'T')}Z`) : null)
+const claimAge = computed(() => claimStart.value === null ? 0 : now.value - claimStart.value)
+/** Last 5 minutes of the claim. */
+const claimWarning = computed(() => queueId.value !== null && claimAge.value >= WARNING_MS && claimAge.value < CLAIM_MS)
+/** Past 30 minutes: the document is no longer this reviewer's. */
+const claimExpired = computed(() => queueId.value !== null && claimAge.value >= CLAIM_MS)
+const expiresText = computed(() => claimStart.value === null ? '' : new Date(claimStart.value + CLAIM_MS).toISOString().slice(11, 16))
+
+/** The reviewer's name, sent with every queue request. */
+function reviewerHeaders(): Record<string, string> {
+  return { 'X-Reviewer': reviewer.value ?? '' }
+}
+
+/** The `data.code` a failed request carried, if any. */
+function errorCode(error: unknown): string | undefined {
+  return (error as { data?: { data?: { code?: string } } }).data?.data?.code
+}
+
+/** The reviewer names a failed request listed, if it listed any. */
+function errorReviewers(error: unknown): string[] | undefined {
+  return (error as { data?: { data?: { reviewers?: string[] } } }).data?.data?.reviewers
+}
+
+/** Makes a name the reviewer at this console and remembers it. */
+function choose(name: string) {
+  reviewer.value = name
+  try {
+    localStorage.setItem(REVIEWER_KEY, name)
+  }
+  catch {
+    // Storage is unavailable: the choice lasts for this page only.
+  }
+}
+
+/** Forgets the saved name and shows the start screen again. */
+function forgetReviewer(names?: string[]) {
+  reviewer.value = null
+  choice.value = ''
+  if (names) reviewers.value = names
+  try {
+    localStorage.removeItem(REVIEWER_KEY)
+  }
+  catch {
+    // Nothing was saved, so there is nothing to remove.
+  }
+}
+
+/** Switching drops the document on screen. Its claim runs out on its own. */
+async function switchReviewer() {
+  await clearWorkspace()
+  forgetReviewer()
+}
+
+/** Loads the reviewer list and restores a saved name if it is still on the list. */
+async function loadReviewers() {
+  try {
+    reviewers.value = (await $fetch<{ reviewers: string[] }>('/api/reviewers')).reviewers
+  }
+  catch {
+    reviewers.value = []
+  }
+
+  let saved: string | null = null
+  try {
+    saved = localStorage.getItem(REVIEWER_KEY)
+  }
+  catch {
+    saved = null
+  }
+
+  if (saved && reviewers.value.includes(saved)) reviewer.value = saved
+  else if (saved) forgetReviewer()
+}
 
 const scanRef = ref<HTMLElement | null>(null)
 const ocrRef = ref<HTMLElement | null>(null)
@@ -101,12 +194,12 @@ function setStatus(cls: string, txt: string) {
   statusText.value = txt
 }
 
-function showToast(msg: string) {
+function showToast(msg: string, ms = 1600) {
   toastText.value = msg
   toastShow.value = true
   setTimeout(() => {
     toastShow.value = false
-  }, 1600)
+  }, ms)
 }
 
 /* ---------- the master form ---------- */
@@ -148,10 +241,18 @@ interface ValidationDocument extends OcrResponse {
   id: number
   filename: string
   pageUrls: string[]
+  claimedAt: string
+}
+
+interface QueueStats {
+  under_validation: number
+  approved: number
+  failed: number
+  byReviewer: Record<string, number>
 }
 
 async function refreshQueueStats() {
-  queueStats.value = await $fetch<Record<string, number>>('/api/validation/stats').catch(() => null)
+  queueStats.value = await $fetch<QueueStats>('/api/validation/stats').catch(() => null)
 }
 
 /**
@@ -162,14 +263,24 @@ async function refreshQueueStats() {
  */
 async function getPdf() {
   if (queueBusy.value) return
+  // Asking again while holding a live document would hand back the same one and
+  // wipe the edits on it, so the reviewer is told to finish it first.
+  if (queueId.value !== null && !claimExpired.value) {
+    showToast(`You already have #${queueId.value}. Approve it first.`)
+    return
+  }
   queueBusy.value = true
   try {
-    const doc = await $fetch<ValidationDocument | null>('/api/validation/next')
+    const doc = await $fetch<ValidationDocument | null>('/api/validation/next', {
+      headers: reviewerHeaders(),
+    })
     if (!doc) {
-      showToast('Nothing waiting to be validated')
+      await clearWorkspace()
+      setStatus('', 'No documents are waiting for review.')
       void refreshQueueStats()
       return
     }
+    claimedAt.value = doc.claimedAt
 
     // Must come before renderForm: it re-applies edited slots after swapping
     // pages, so edits left over from the last document would leak into this one.
@@ -193,6 +304,10 @@ async function getPdf() {
     void refreshQueueStats()
   }
   catch (error: unknown) {
+    if (errorCode(error) === 'unknown_reviewer') {
+      forgetReviewer(errorReviewers(error))
+      return
+    }
     showToast(`Could not get a document: ${readErrorMessage(error)}`)
   }
   finally {
@@ -200,32 +315,50 @@ async function getPdf() {
   }
 }
 
-/** Accepts the form as corrected, then moves straight on to the next one. */
+/**
+ * Accepts the form as corrected, then moves straight on to the next one.
+ *
+ * The server decides whether this reviewer may approve. A refusal means the
+ * document is no longer this reviewer's: the workspace is cleared, the typed
+ * values go with it, and the next document is loaded.
+ */
 async function approveDocument() {
   const id = queueId.value
-  if (id === null || queueBusy.value) return
+  if (id === null || queueBusy.value || claimExpired.value) return
   queueBusy.value = true
+  let moveOn = false
   try {
     await $fetch(`/api/validation/${id}/approve`, {
       method: 'POST',
+      headers: reviewerHeaders(),
       body: { values: readFormValues() },
     })
     showToast(`Approved #${id}`)
+    // Cleared before the next document is asked for: the scan and the values that
+    // were just approved should leave the screen with the document they belong to.
+    await clearWorkspace()
+    setStatus('', `READY · approved #${id}`)
+    moveOn = true
   }
   catch (error: unknown) {
-    showToast(`Could not approve: ${readErrorMessage(error)}`)
-    return
+    if (errorCode(error) === 'unknown_reviewer') {
+      forgetReviewer(errorReviewers(error))
+      return
+    }
+    showToast(readErrorMessage(error), 6000)
+    await clearWorkspace()
+    moveOn = true
   }
   finally {
     queueBusy.value = false
   }
 
-  // Cleared before the next document is asked for, not after: the scan and the
-  // values that were just approved should leave the screen with the document
-  // they belong to. If nothing is waiting, what remains is the blank form rather
-  // than an approved one that looks like it still needs checking.
+  if (moveOn) await getPdf()
+}
+
+/** Drops the document whose claim ran out, then takes the next one. */
+async function getNewPdf() {
   await clearWorkspace()
-  setStatus('', `READY · approved #${id}`)
   await getPdf()
 }
 
@@ -272,6 +405,7 @@ async function clearWorkspace() {
   scan.reset()
   form.reset()
   queueId.value = null
+  claimedAt.value = null
   fileName.value = ''
   inputBadgeClass.value = 'badge empty'
   inputBadgeText.value = 'EMPTY'
@@ -586,6 +720,11 @@ function onFormInput(e: Event) {
 }
 
 onMounted(() => {
+  clock = setInterval(() => {
+    now.value = Date.now()
+  }, 1000)
+  void loadReviewers()
+
   // Attached by hand rather than with `@wheel`, and explicitly non-passive.
   // A passive wheel listener cannot call `preventDefault`, and without that the
   // browser keeps Ctrl-wheel for zooming the whole console — the handler would
@@ -600,6 +739,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  clearInterval(clock)
   scanRef.value?.removeEventListener('wheel', scan.onWheel)
   ocrRef.value?.removeEventListener('wheel', form.onWheel)
 })
@@ -625,7 +765,7 @@ onBeforeUnmount(() => {
           GET PDF
           <span v-if="queueStats?.under_validation" class="qcount">{{ queueStats.under_validation }}</span>
         </button>
-        <button class="btn approve" :disabled="queueId === null || queueBusy" title="Accept this form and move on to the next" @click="approveDocument">
+        <button class="btn approve" :disabled="queueId === null || queueBusy || claimExpired" title="Accept this form and move on to the next" @click="approveDocument">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M20 6 9 17l-5-5" />
           </svg>
@@ -639,6 +779,8 @@ onBeforeUnmount(() => {
           EXPORT ALL
         </a>
         <div class="header-sep" />
+        <span v-if="reviewer" class="who">{{ reviewer }}</span>
+        <button v-if="reviewer" class="btn" title="Pick a different name" @click="switchReviewer">SWITCH</button>
         <button class="btn" @click="resetAll">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <path d="M4 4v6h6" />
@@ -657,6 +799,15 @@ onBeforeUnmount(() => {
         <span>PAGE <b>{{ pageCount ? currentPage + 1 : 0 }}</b> / <b>{{ pageCount }}</b></span>
         <span v-if="queueStats">QUEUE <b>{{ queueStats.under_validation ?? 0 }}</b> · <b>{{ queueStats.approved ?? 0 }}</b> done<template v-if="queueStats.failed"> · <b>{{ queueStats.failed }}</b> failed</template></span>
       </div>
+    </div>
+
+    <!-- CLAIM: a warning in the last 5 minutes, and a stop once the claim has run out -->
+    <div v-if="claimWarning" class="claimbar warn">
+      Approve within 5 minutes or this document returns to the queue.
+    </div>
+    <div v-if="claimExpired" class="claimbar expired">
+      <span>Your claim on #{{ queueId }} expired at {{ expiresText }} UTC. It is back in the queue.</span>
+      <button class="btn get" @click="getNewPdf">GET A NEW PDF</button>
     </div>
 
     <!-- PAGER: the scan and the form are always turned together -->
@@ -829,6 +980,19 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- START: nothing is shown until a reviewer picks their name -->
+  <div v-if="!reviewer" class="picker">
+    <div class="pickerbox">
+      <div class="pickertitle">Who are you?</div>
+      <select v-model="choice" aria-label="Your name">
+        <option value="" disabled>Select your name</option>
+        <option v-for="name in reviewers" :key="name" :value="name">{{ name }}</option>
+      </select>
+      <button class="btn approve" :disabled="!choice" @click="choose(choice)">START</button>
+      <p v-if="!reviewers.length" class="pickernote">No reviewers are set. Ask the admin to set REVIEWERS.</p>
     </div>
   </div>
 
@@ -1575,6 +1739,72 @@ a.btn {
 .empty-state .s {
   color: var(--dim);
   font-size: 12px;
+}
+
+/* reviewer name in the header */
+.who {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--teal);
+}
+
+/* claim warning and expiry, under the status strip */
+.claimbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.claimbar.warn {
+  color: var(--orange);
+  background: var(--orange-fill);
+}
+.claimbar.expired {
+  color: var(--red);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* start screen: covers the console until a reviewer picks their name */
+.picker {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(10, 12, 16, 0.92);
+}
+.pickerbox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(360px, 90vw);
+  padding: 24px;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.pickertitle {
+  font-size: 15px;
+  font-weight: 600;
+}
+.pickerbox select {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  background: var(--bg);
+  color: var(--ink);
+}
+.pickerbox .btn {
+  justify-content: center;
+}
+.pickernote {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 /* toast */
