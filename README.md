@@ -13,6 +13,7 @@ A human-in-the-loop review console for multi-page registration forms. Physical f
 ## Table of Contents
 
 - [Overview & Architecture](#overview--architecture)
+- [Demo Video](#demo-video)
 - [Key Features](#key-features)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
@@ -59,6 +60,23 @@ DataAnnotator bridges the gap between automated OCR extraction and high-accuracy
           ▼
   files/approved/  ──►  CSV Export (/api/validation/export)
 ```
+
+---
+
+## Demo Video
+
+https://github.com/user-attachments/assets/ or view the packaged demo:
+
+▶️ **[Watch the Console Demo Video (demo.mp4)](demo.mp4)**
+
+The demo showcases:
+1. Reviewer identity selection and initial queue status.
+2. Fetching and claiming the next pending scan via **GET PDF**.
+3. Side-by-side inspection of high-resolution rasterized scan pages and extracted form values.
+4. Smooth page-turning between Page 1 and Page 2.
+5. In-line form validation, correction, and instant approval.
+6. Real-time updates to queue metrics and per-reviewer approval counts.
+7. One-click **EXPORT ALL** CSV generation.
 
 ---
 
