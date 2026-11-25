@@ -1,20 +1,20 @@
 :root {
-  --hf-gray-50: #f9fafb;
-  --hf-gray-100: #f3f4f6;
-  --hf-gray-200: #e5e7eb;
-  --hf-gray-300: #d1d5db;
-  --hf-gray-400: #9ca3af;
-  --hf-gray-500: #6b7280;
-  --hf-gray-600: #4b5563;
-  --hf-gray-700: #374151;
-  --hf-blue-50: #eff6ff;
-  --hf-blue-100: #dbeafe;
-  --hf-blue-600: #2563eb;
-  --hf-blue-700: #1d4ed8;
-  --hf-green-50: #f0fdf4;
-  --hf-green-100: #dcfce7;
-  --hf-green-700: #15803d;
-  --hf-red-50: #fef2f2;
+  --ui-gray-50: #f9fafb;
+  --ui-gray-100: #f3f4f6;
+  --ui-gray-200: #e5e7eb;
+  --ui-gray-300: #d1d5db;
+  --ui-gray-400: #9ca3af;
+  --ui-gray-500: #6b7280;
+  --ui-gray-600: #4b5563;
+  --ui-gray-700: #374151;
+  --ui-blue-50: #eff6ff;
+  --ui-blue-100: #dbeafe;
+  --ui-blue-600: #2563eb;
+  --ui-blue-700: #1d4ed8;
+  --ui-green-50: #f0fdf4;
+  --ui-green-100: #dcfce7;
+  --ui-green-700: #15803d;
+  --ui-red-50: #fef2f2;
 }
 
 * {

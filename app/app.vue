@@ -1,11 +1,11 @@
 <script setup lang="ts">
 useHead({
-  title: 'DEMO Unlimited OCR Streaming 🚀 - a Hugging Face Space by baohuynhbk14',
+  title: 'DataAnnotator — Document OCR console',
   meta: [
     {
       name: 'description',
       content:
-        'Upload a photo, scanned page, or PDF file and the app will recognize all the text, titles, tables, and other elements. It returns the extracted content as clean markdown, provides bounding-box coordinates.',
+        'Upload a filled-in registration form as a PDF or image. The values are read off it into the master form, where they can be corrected in place and exported as CSV.',
     },
   ],
 })
@@ -14,8 +14,7 @@ useHead({
 <template>
   <div class="page">
     <NuxtRouteAnnouncer />
-    <SpaceHeader />
-    <SpaceApp />
+    <AppMain />
   </div>
 </template>
 
