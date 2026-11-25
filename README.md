@@ -13,7 +13,7 @@ A human-in-the-loop review console for multi-page registration forms. Physical f
 ## Table of Contents
 
 - [Overview & Architecture](#overview--architecture)
-- [Demo Video](#demo-video)
+- [Demo Walkthrough](#demo-walkthrough)
 - [Key Features](#key-features)
 - [Requirements](#requirements)
 - [Quick Start](#quick-start)
@@ -63,13 +63,15 @@ DataAnnotator bridges the gap between automated OCR extraction and high-accuracy
 
 ---
 
-## Demo Video
+## Demo Walkthrough
 
-https://github.com/user-attachments/assets/ or view the packaged demo:
+![DataAnnotator Review Console Demo](demo.gif)
 
-▶️ **[Watch the Console Demo Video (demo.mp4)](demo.mp4)**
+<p align="center">
+  <video src="https://github.com/harshil15999/DataAnnotator/raw/main/demo.mp4" controls="controls" muted="muted" width="100%"></video>
+</p>
 
-The demo showcases:
+The walkthrough showcases:
 1. Reviewer identity selection and initial queue status.
 2. Fetching and claiming the next pending scan via **GET PDF**.
 3. Side-by-side inspection of high-resolution rasterized scan pages and extracted form values.
